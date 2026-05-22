@@ -496,7 +496,6 @@ function rAdmin() {
           </div>
           <div class="ddate">${fd(r.created_at)}</div>
           <div style="display:flex;gap:4px">
-            <button class="btn-del" onclick="showEditModal(${JSON.stringify(r).replace(/'/g, "\\'")})" title="수정" style="background:var(--primary);color:white">✎</button>
             <button class="btn-del" onclick="showEditModal('${r.id}')" title="수정" style="background:var(--primary);color:white">✎</button>
             <button class="btn-del" onclick="del('${r.id}')" title="삭제">✕</button>
           </div>
@@ -543,7 +542,10 @@ async function del(id) {
   await load(); rAdmin();
 }
 
-function showEditModal(r) {
+async function showEditModal(id) {
+  const { data: [r] } = await db.from("esg_submissions").select("*").eq("id", id);
+  if (!r) { alert("문서를 찾을 수 없습니다"); return; }
+
   const subOptions = ESG[r.esg_category]?.map(s => `<option value="${s}" ${s===r.sub_category?'selected':''}>${s}</option>`).join('') || '';
   const form = `
     <div style="display:flex;flex-direction:column;gap:12px">
