@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>정도경영 정성데이터 대시보드 · 동아쏘시오그룹</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --bg: #F4F1EC;
+      --surface: #FFFFFF;
+      --primary: #1B3B1B;
+      --primary-h: #2D5A2D;
+      --accent: #C08B2E;
+      --t1: #1A1A18;
+      --t2: #5A5A56;
+      --t3: #9E9D97;
+      --border: #E2DED6;
+      --border-l: #ECEAE4;
+      --be-bg: #EBF4DF; --be-t: #2A5210;
+      --bs-bg: #DFF0FA; --bs-t: #14427A;
+      --bg-bg: #FBF0DC; --bg-t: #7A4B0A;
+      --c1-bg: #EBF4DF; --c1-t: #2A5210;
+      --c2-bg: #C4E09A; --c2-t: #1B3B0A;
+      --c3-bg: #5C9620; --c3-t: #FFFFFF;
+      --shadow: 0 1px 4px rgba(0,0,0,0.07), 0 0 1px rgba(0,0,0,0.05);
+      --r: 10px; --rs: 6px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Pretendard', -apple-system, sans-serif; background: var(--bg); color: var(--t1); min-height: 100vh; font-size: 14px; line-height: 1.5; }
+
+    /* ── HEADER ── */
+    header { background: var(--primary); padding: 0 32px; display: flex; align-items: center; justify-content: space-between; height: 58px; position: sticky; top: 0; z-index: 100; }
+    .logo { color: #fff; font-size: 14px; font-weight: 600; letter-spacing: -0.01em; display: flex; align-items: center; gap: 10px; }
+    .logo-dot { width: 7px; height: 7px; background: var(--accent); border-radius: 50%; }
+    .nav-tabs { display: flex; gap: 2px; background: rgba(255,255,255,0.08); padding: 4px; border-radius: 9px; }
+    .nav-tab { padding: 6px 16px; font-size: 13px; font-family: inherit; font-weight: 500; border: none; border-radius: 6px; cursor: pointer; background: transparent; color: rgba(255,255,255,0.6); transition: all .15s; letter-spacing: -.01em; }
+    .nav-tab:hover { color: rgba(255,255,255,0.9); }
+    .nav-tab.active { background: rgba(255,255,255,0.15); color: #fff; }
+    .nav-tab.at.active { background: var(--accent); color: #fff; }
+
+    /* ── LAYOUT ── */
+    .container { max-width: 1100px; margin: 0 auto; padding: 28px 24px; }
+
+    /* ── CARD ── */
+    .card { background: var(--surface); border-radius: var(--r); border: 1px solid var(--border-l); box-shadow: var(--shadow); padding: 22px 24px; margin-bottom: 16px; }
+    .card-title { font-size: 14px; font-weight: 600; color: var(--t1); margin-bottom: 18px; display: flex; align-items: center; gap: 8px; letter-spacing: -.01em; }
+
+    /* ── METRICS ── */
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+    .metric { background: var(--surface); border: 1px solid var(--border-l); border-radius: var(--r); padding: 16px 18px; box-shadow: var(--shadow); }
+    .metric-label { font-size: 10px; font-weight: 600; color: var(--t3); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+    .metric-value { font-size: 26px; font-weight: 700; color: var(--t1); letter-spacing: -.03em; line-height: 1.1; }
+    .metric-sub { font-size: 11px; color: var(--t3); margin-top: 4px; }
+
+    /* ── BADGES ── */
+    .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 100px; font-size: 11px; font-weight: 600; }
+    .be { background: var(--be-bg); color: var(--be-t); }
+    .bs { background: var(--bs-bg); color: var(--bs-t); }
+    .bg { background: var(--bg-bg); color: var(--bg-t); }
+
+    /* ── COUNT CELLS ── */
+    .cnt { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; padding: 0 5px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+    .c0 { color: var(--t3); font-weight: 400; }
+    .c1 { background: var(--c1-bg); color: var(--c1-t); }
+    .c2 { background: var(--c2-bg); color: var(--c2-t); }
+    .c3 { background: var(--c3-bg); color: var(--c3-t); }
+
+    /* ── TABLE ── */
+    .twrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { padding: 8px 10px; text-align: left; font-size: 10px; font-weight: 600; color: var(--t3); border-bottom: 1px solid var(--border); white-space: nowrap; letter-spacing: .02em; }
+    td { padding: 7px 10px; border-bottom: 1px solid var(--border-l); text-align: center; }
+    tr:last-child td { border-bottom: none; }
+    .tdc { text-align: left; font-weight: 600; font-size: 12px; color: var(--t1); white-space: nowrap; }
+    .tdt { font-weight: 700; }
+
+    /* ── FORM ── */
+    .fgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .fg { display: flex; flex-direction: column; gap: 6px; }
+    .fg.full { grid-column: 1 / -1; }
+    .flabel { font-size: 12px; font-weight: 600; color: var(--t2); letter-spacing: -.01em; }
+    .req { color: #C0392B; }
+    select, input[type="url"], input[type="text"], input[type="password"], textarea {
+      width: 100%; padding: 9px 12px; font-size: 13px; font-family: inherit;
+      border: 1px solid var(--border); border-radius: var(--rs);
+      background: var(--surface); color: var(--t1); outline: none; transition: border-color .15s;
+      -webkit-appearance: none; appearance: none;
+    }
+    select:focus, input:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(27,59,27,.09); }
+    textarea { resize: vertical; min-height: 72px; line-height: 1.6; }
+    .btn-main { width: 100%; padding: 11px; font-size: 14px; font-family: inherit; font-weight: 600; background: var(--primary); color: #fff; border: none; border-radius: var(--rs); cursor: pointer; margin-top: 8px; transition: background .15s; letter-spacing: -.01em; }
+    .btn-main:hover { background: var(--primary-h); }
+    .btn-main:disabled { opacity: .35; cursor: not-allowed; }
+    .btn-sec { padding: 7px 14px; font-size: 12px; font-family: inherit; font-weight: 500; background: var(--bg); color: var(--t2); border: 1px solid var(--border); border-radius: var(--rs); cursor: pointer; transition: all .15s; }
+    .btn-sec:hover { border-color: var(--t3); color: var(--t1); }
+
+    /* ── ALERTS ── */
+    .alert { display: flex; align-items: flex-start; gap: 10px; padding: 12px 16px; border-radius: var(--rs); font-size: 13px; margin-bottom: 16px; line-height: 1.6; }
+    .a-ok { background: var(--be-bg); color: var(--be-t); border: 1px solid #B8D98A; }
+    .a-info { background: #EEF3FD; color: #2347A3; border: 1px solid #C5D2FA; }
+    .a-warn { background: var(--bg-bg); color: var(--bg-t); border: 1px solid #EDD896; }
+
+    /* ── CO GRID ── */
+    .cogrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .cocard { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--bg); border-radius: var(--rs); border: 1px solid var(--border-l); }
+    .codot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .don { background: #5C9620; } .doff { background: var(--border); }
+    .coname { font-size: 12px; font-weight: 600; flex: 1; }
+    .cocnt { font-size: 11px; color: var(--t3); }
+
+    /* ── PIN GATE ── */
+    .pingate { max-width: 340px; margin: 56px auto; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+    .pinicon { font-size: 42px; }
+    .pintitle { font-size: 18px; font-weight: 700; letter-spacing: -.02em; }
+    .pinsub { font-size: 13px; color: var(--t2); line-height: 1.6; }
+    .pinerr { font-size: 12px; color: #C0392B; }
+    .btn-login { padding: 10px 36px; font-size: 14px; font-family: inherit; font-weight: 600; background: var(--primary); color: #fff; border: none; border-radius: var(--rs); cursor: pointer; transition: background .15s; }
+    .btn-login:hover { background: var(--primary-h); }
+
+    /* ── DATA ROWS ── */
+    .drow { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; background: var(--bg); border-radius: var(--rs); margin-bottom: 6px; }
+    .dmeta { flex: 1; min-width: 0; }
+    .dhead { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+    .dco { font-size: 12px; font-weight: 700; }
+    .dsub { font-size: 11px; color: var(--t2); }
+    .dname { font-size: 11px; color: var(--t3); }
+    .dlink { font-size: 11px; color: #1A56B0; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px; display: inline-block; vertical-align: bottom; }
+    .dlink:hover { text-decoration: underline; }
+    .ddesc { font-size: 11px; color: var(--t2); margin-top: 2px; }
+    .ddate { font-size: 11px; color: var(--t3); white-space: nowrap; flex-shrink: 0; }
+    .btn-del { background: none; border: none; color: var(--t3); cursor: pointer; font-size: 15px; padding: 0 2px; flex-shrink: 0; line-height: 1; }
+    .btn-del:hover { color: #C0392B; }
+
+    /* ── FILTERS ── */
+    .filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+    .fbtn { padding: 4px 12px; font-size: 12px; font-family: inherit; border: 1px solid var(--border); border-radius: 100px; cursor: pointer; background: none; color: var(--t2); transition: all .15s; }
+    .fbtn:hover { border-color: var(--t3); color: var(--t1); }
+    .fbtn.on { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+    /* ── MISC ── */
+    .empty { text-align: center; padding: 48px 20px; color: var(--t3); font-size: 13px; }
+    .eico { font-size: 30px; margin-bottom: 10px; }
+    .legend { display: flex; gap: 14px; margin-top: 12px; font-size: 11px; color: var(--t3); flex-wrap: wrap; }
+    .legitem { display: flex; align-items: center; gap: 5px; }
+    .pwdrow { display: flex; gap: 8px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+    .pwdrow input { flex: 1; min-width: 120px; max-width: 160px; }
+    .setup { background: var(--primary); color: #fff; border-radius: var(--r); padding: 20px 24px; margin-bottom: 20px; }
+    .setup h3 { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+    .setup p { font-size: 12px; opacity: .8; line-height: 1.8; }
+    .setup code { background: rgba(255,255,255,.2); padding: 1px 6px; border-radius: 3px; font-family: monospace; font-size: 11px; }
+    .chip { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 500; background: var(--bg); color: var(--t2); border: 1px solid var(--border); }
+
+    @keyframes fi { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    .anim { animation: fi .22s ease forwards; }
+
+    @media (max-width: 768px) {
+      header { padding: 0 16px; }
+      .logo span { display: none; }
+      .nav-tab { padding: 6px 10px; font-size: 12px; }
+      .container { padding: 14px; }
+      .metrics { grid-template-columns: 1fr 1fr; }
+      .cogrid { grid-template-columns: 1fr 1fr; }
+      .fgrid { grid-template-columns: 1fr; }
+      .fg.full { grid-column: 1; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-dot"></div>
+    <span>동아쏘시오그룹</span> 정도경영 정성데이터 대시보드
+  </div>
+  <nav class="nav-tabs">
+    <button class="nav-tab" id="tab-submit" onclick="go('submit')">문서 제출</button>
+    <button class="nav-tab active" id="tab-status" onclick="go('status')">현황 확인</button>
+    <button class="nav-tab at" id="tab-admin" onclick="go('admin')">🔒 관리자</button>
+  </nav>
+</header>
+
+<div class="container">
+  <div id="view-submit" style="display:none"></div>
+  <div id="view-status"></div>
+  <div id="view-admin" style="display:none"></div>
+</div>
+
+<script>
+/* ================================================================
+   ⚙️  설정 (CONFIG)
+   ================================================================ */
+const CONFIG = {
+  SUPABASE_URL:      'https://vsqluuzuyuyhqgeenpvo.supabase.co',
+  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzcWx1dXp1eXV5aHFnZWVucHZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0MDI5MDgsImV4cCI6MjA5NDk3ODkwOH0.f7K0fWtqk6HMnytl0WnM-Xm_NgLYvgcjDFuwDC3JFD4',
+  ADMIN_PASSWORD:    '정도경영팀',
+};
+
+/* 그룹사 목록 */
+const COMPANIES = [
+  '홀딩스', '동아제약', '비티젠', '동아오츠카',
+  '동아에코팩', '용마로지스', 'DA인포메이션', '한국신동공업', '아벤종합건설',
+];
+
+/* ESG 분류 및 세부 항목 */
+const ESG = {
+  '인권경영': ['인권&노동', '안전보건', '기타'],
+  '환경경영': ['에너지', '폐기물', '물', '환경오염(대기, 소음)', '생물다양성', '인증서', '기타'],
+  '준법경영': ['준법', '윤리', '반부패', '인증서', '기타'],
+  '소비자중심경영': ['품질', '정보보호', '인증서', '기타'],
+  'CSR': ['건강', '사람', '환경', '지역사회', '기타'],
+  '공급망 관리': ['공통', '윤리', '노동', '환경', '기타'],
+  '기타': ['기타'],
+};
+/* ================================================================ */
+
+const CATS = Object.keys(ESG);
+let db = null;
+let ready = false;
+let rows = [];
+let view = 'status';
+let loggedIn = false;
+let pinErr = false;
+let fCat = '전체';
+let fCo  = '전체';
+let okSubmit = false;
+let okPwd = false;
+
+// ── Init ──────────────────────────────────────────────────────────
+function init() {
+  if (CONFIG.SUPABASE_URL !== 'YOUR_SUPABASE_URL') {
+    try { db = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY); ready = true; } catch(e) {}
+  }
+  load();
+}
+
+async function load() {
+  if (ready) {
+    const { data } = await db.from('esg_submissions').select('*').order('created_at', { ascending: false });
+    if (data) rows = data;
+  }
+  render();
+}
+
+// ── Routing ───────────────────────────────────────────────────────
+function go(v) {
+  view = v;
+  ['submit','status','admin'].forEach(x => {
+    document.getElementById('view-' + x).style.display = x === v ? '' : 'none';
+    const t = document.getElementById('tab-' + x);
+    t.className = 'nav-tab' + (x === 'admin' ? ' at' : '') + (x === v ? ' active' : '');
+  });
+  render();
+}
+
+function render() {
+  if (view === 'submit') rSubmit();
+  else if (view === 'status') rStatus();
+  else rAdmin();
+}
+
+// ── Helpers ───────────────────────────────────────────────────────
+const bc = c => c.startsWith('환') ? 'be' : c.startsWith('사') ? 'bs' : 'bg';
+const cn = n => n === 0
+  ? '<span class="cnt c0">—</span>'
+  : `<span class="cnt c${Math.min(n,3)}">${n}</span>`;
+const fd = ts => { const d = new Date(ts); return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; };
+const setupBanner = () => `<div class="setup"><h3>⚙️ Supabase 연결이 필요합니다</h3><p>
+  index.html 상단 <code>CONFIG</code>에 Supabase URL과 API 키를 입력해주세요.<br>
+  <code>setup-guide.md</code> 파일에 단계별 가이드가 있습니다.
+</p></div>`;
+
+// ── SUBMIT VIEW ───────────────────────────────────────────────────
+function rSubmit() {
+  const el = document.getElementById('view-submit');
+  el.innerHTML = `
+    ${okSubmit ? '<div class="alert a-ok anim">✅ 문서가 제출되었습니다. 감사합니다.</div>' : ''}
+    ${!ready ? setupBanner() : ''}
+    <div class="card anim">
+      <div class="card-title">📤 ESG 정성 문서 제출</div>
+      <div class="fgrid">
+        <div class="fg">
+          <span class="flabel">그룹사 <span class="req">*</span></span>
+          <select id="f-co">
+            <option value="">선택해주세요</option>
+            ${COMPANIES.map(c=>`<option>${c}</option>`).join('')}
+          </select>
+        </div>
+        <div class="fg">
+          <span class="flabel">정도경영 분류 <span class="req">*</span></span>
+          <select id="f-cat" onchange="updSub()">
+            <option value="">선택해주세요</option>
+            ${CATS.map(c=>`<option>${c}</option>`).join('')}
+          </select>
+        </div>
+        <div class="fg full">
+          <span class="flabel">세부 항목 <span class="req">*</span></span>
+          <select id="f-sub"><option value="">정도경영 분류를 먼저 선택하세요</option></select>
+        </div>
+        <div class="fg full">
+          <span class="flabel">문서 링크 <span class="req">*</span></span>
+          <input type="url" id="f-link" placeholder="D-Cloud 내부 배포용 URL 복사">
+        </div>
+        <div class="fg full">
+          <span class="flabel">문서 제목 <span class="req">*</span></span>
+          <input type="text" id="f-title" placeholder="문서의 제목을 입력해주세요">
+        </div>
+        <div class="fg">
+          <span class="flabel">문서 작성 연도 <span class="req">*</span></span>
+          <input type="number" id="f-year" placeholder="2024" min="1900" max="2099">
+        </div>
+        <div class="fg full">
+          <span class="flabel">문서 설명 <span class="req">*</span></span>
+          <textarea id="f-desc" placeholder="문서에 대한 간단한 설명을 입력해주세요"></textarea>
+        </div>
+        <div class="fg">
+          <span class="flabel">제출자 부서, 성명 <span class="req">*</span></span>
+          <input type="text" id="f-name" placeholder="정도경영팀 홍길동">
+        </div>
+      </div>
+      <button class="btn-main" id="sbtn" onclick="doSubmit()" ${!ready?'disabled':''}>문서 제출하기 →</button>
+    </div>
+    <div class="card" style="font-size:12px;color:var(--t2);line-height:2">
+      <div style="font-weight:600;color:var(--t1);margin-bottom:6px">📋 제출 안내</div>
+      제출 후 수정이 필요한 경우 정도경영팀으로 연락해 주세요.
+    </div>`;
+}
+
+function updSub() {
+  const cat = document.getElementById('f-cat').value;
+  document.getElementById('f-sub').innerHTML = cat
+    ? '<option value="">세부 항목을 선택해주세요</option>' + (ESG[cat]||[]).map(s=>`<option>${s}</option>`).join('')
+    : '<option value="">정도경영 분류를 먼저 선택하세요</option>';
+}
+
+async function doSubmit() {
+  const co    = document.getElementById('f-co').value;
+  const cat   = document.getElementById('f-cat').value;
+  const sub   = document.getElementById('f-sub').value;
+  const link  = document.getElementById('f-link').value;
+  const title = document.getElementById('f-title').value;
+  const year  = document.getElementById('f-year').value;
+  const desc  = document.getElementById('f-desc').value;
+  const name  = document.getElementById('f-name').value;
+  if (!co||!cat||!sub||!link||!title||!year||!desc||!name) { alert('그룹사, 정도경영 분류, 세부 항목, 문서 링크, 문서 제목, 문서 작성 연도, 문서 설명, 제출자 부서·성명은 필수입니다.'); return; }
+
+  const btn = document.getElementById('sbtn');
+  btn.disabled = true; btn.textContent = '제출 중...';
+
+  const { error } = await db.from('esg_submissions').insert([{
+    company: co, esg_category: cat, sub_category: sub,
+    link, title, year: parseInt(year), description: desc, submitter_name: name,
+  }]);
+
+  if (error) {
+    alert('제출 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.\n' + error.message);
+    btn.disabled = false; btn.textContent = '문서 제출하기 →'; return;
+  }
+
+  await load();
+  okSubmit = true; rSubmit();
+  setTimeout(() => { okSubmit = false; rSubmit(); }, 5000);
+}
+
+// ── STATUS VIEW ───────────────────────────────────────────────────
+let statusFilter = null; // 현재 선택된 분류 필터
+let yearFilter = null;    // 현재 선택된 연도 필터
+
+function rStatus() {
+  const el = document.getElementById('view-status');
+  const total = rows.length;
+  const coCnt = Object.fromEntries(COMPANIES.map(c => [c, rows.filter(r => r.company===c).length]));
+  const catCnt = Object.fromEntries(CATS.map(c => [c, rows.filter(r => r.esg_category===c).length]));
+  
+  // 모든 연도 수집 및 정렬
+  const allYears = [...new Set(rows.map(r => r.year).filter(y => y))].sort((a, b) => b - a);
+  const yearCnt = Object.fromEntries(allYears.map(y => [y, rows.filter(r => r.year === y).length]));
+
+  // 분류 필터 버튼 HTML
+  let filterHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><strong style="width:100%;font-size:12px;color:var(--t3);text-transform:uppercase;letter-spacing:0.05em">정도경영 분류</strong>`;
+  filterHTML += `<button class="btn-sec" style="background:${!statusFilter?'var(--primary)':'var(--bg)'};color:${!statusFilter?'white':'var(--t2)'};border:none;cursor:pointer;transition:all 0.15s" onclick="statusFilter=null;rStatus()">전체</button>`;
+  CATS.forEach(cat => {
+    const cnt = catCnt[cat];
+    const isActive = statusFilter === cat;
+    filterHTML += `<button class="btn-sec" style="background:${isActive?'var(--primary)':'var(--bg)'};color:${isActive?'white':'var(--t2)'};border:none;cursor:pointer;transition:all 0.15s" onclick="statusFilter='${cat}';rStatus()">${cat} (${cnt})</button>`;
+  });
+  filterHTML += `</div>`;
+  
+  // 연도 필터 버튼 HTML
+  filterHTML += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px"><strong style="width:100%;font-size:12px;color:var(--t3);text-transform:uppercase;letter-spacing:0.05em">작성 연도</strong>`;
+  filterHTML += `<button class="btn-sec" style="background:${!yearFilter?'var(--primary)':'var(--bg)'};color:${!yearFilter?'white':'var(--t2)'};border:none;cursor:pointer;transition:all 0.15s" onclick="yearFilter=null;rStatus()">전체</button>`;
+  allYears.forEach(year => {
+    const cnt = yearCnt[year];
+    const isActive = yearFilter === year;
+    filterHTML += `<button class="btn-sec" style="background:${isActive?'var(--primary)':'var(--bg)'};color:${isActive?'white':'var(--t2)'};border:none;cursor:pointer;transition:all 0.15s" onclick="yearFilter=${year};rStatus()">${year}년 (${cnt})</button>`;
+  });
+  filterHTML += `</div>`;
+
+  // 필터된 데이터
+  let filteredRows = rows;
+  if (statusFilter) filteredRows = filteredRows.filter(r => r.esg_category === statusFilter);
+  if (yearFilter) filteredRows = filteredRows.filter(r => r.year === yearFilter);
+  
+  const filteredCats = statusFilter ? [statusFilter] : CATS;
+  
+  let mHTML = `<div class="twrap"><table><thead><tr>
+    <th style="text-align:left;min-width:88px">그룹사</th>`;
+  filteredCats.forEach(cat => ESG[cat].forEach(sub =>
+    mHTML += `<th style="min-width:74px"><span class="badge ${bc(cat)}">${sub}</span></th>`
+  ));
+  mHTML += `<th>합계</th></tr></thead><tbody>`;
+  COMPANIES.forEach(co => {
+    mHTML += `<tr><td class="tdc">${co}</td>`;
+    filteredCats.forEach(cat => ESG[cat].forEach(sub =>
+      mHTML += `<td>${cn(filteredRows.filter(r=>r.company===co&&r.esg_category===cat&&r.sub_category===sub).length)}</td>`
+    ));
+    const coTotal = filteredRows.filter(r => r.company === co).length;
+    mHTML += `<td class="tdt">${coTotal||'—'}</td></tr>`;
+  });
+  mHTML += `</tbody></table></div>`;
+
+  const coHTML = COMPANIES.map(c => `
+    <div class="cocard">
+      <div class="codot ${coCnt[c]>0?'don':'doff'}"></div>
+      <span class="coname">${c}</span>
+      <span class="cocnt">${coCnt[c]>0 ? coCnt[c]+'건' : '미제출'}</span>
+    </div>`).join('');
+
+  el.innerHTML = `
+    ${!ready ? setupBanner() : ''}
+    <div class="alert a-info" style="margin-bottom:20px">
+      🔒 <strong>담당자 공개 화면입니다.</strong> 제출 건수와 현황만 표시되며, 실제 문서 링크는 관리자만 열람할 수 있습니다.
+    </div>
+    <div class="metrics anim">
+      <div class="metric">
+        <div class="metric-label">총 제출 건수</div>
+        <div class="metric-value">${total}</div>
+        <div class="metric-sub">전체 누적</div>
+      </div>
+    </div>
+    <div class="card anim">
+      <div class="card-title">📊 분야별 제출 현황</div>
+      ${filterHTML}
+      ${mHTML}
+      <div class="legend">
+        <div class="legitem"><span class="cnt c1">1</span> 1건</div>
+        <div class="legitem"><span class="cnt c2">2</span> 2건</div>
+        <div class="legitem"><span class="cnt c3">3+</span> 3건 이상</div>
+        <div class="legitem"><span class="cnt c0">—</span> 미제출</div>
+      </div>
+    </div>`;
+}
+
+// ── ADMIN VIEW ────────────────────────────────────────────────────
+function rAdmin() {
+  const el = document.getElementById('view-admin');
+
+  if (!loggedIn) {
+    el.innerHTML = `
+      <div class="pingate anim">
+        <div class="pinicon">🔐</div>
+        <div class="pintitle">관리자 전용 화면</div>
+        <div class="pinsub">비밀번호를 입력하면<br>전체 문서와 링크를 열람할 수 있습니다</div>
+        <input class="pin-input" id="pin" type="password" placeholder="비밀번호 입력" style="text-align:center;max-width:200px;letter-spacing:.1em;font-size:16px" onkeydown="if(event.key==='Enter')tryPin()">
+        ${pinErr ? '<div class="pinerr">⚠ 비밀번호가 일치하지 않습니다</div>' : ''}
+        <button class="btn-login" onclick="tryPin()">로그인</button>
+      </div>`;
+    return;
+  }
+
+  const filtered = rows.filter(r =>
+    (fCat==='전체' || r.esg_category===fCat) &&
+    (fCo ==='전체' || r.company===fCo)
+  );
+
+  const catBtns  = ['전체',...CATS].map(c => `<button class="fbtn${fCat===c?' on':''}" onclick="setFC('${c}')">${c}</button>`).join('');
+  const coBtns   = ['전체',...COMPANIES].map(c => `<button class="fbtn${fCo===c?' on':''}" onclick="setFCo('${c}')">${c}</button>`).join('');
+  const coCnt    = Object.fromEntries(COMPANIES.map(c=>[c,rows.filter(r=>r.company===c).length]));
+
+  const dataHTML = filtered.length === 0
+    ? `<div class="empty"><div class="eico">📭</div>해당하는 문서가 없습니다</div>`
+    : filtered.map(r => `
+        <div class="drow">
+          <div class="dmeta">
+            <div class="dhead">
+              <span class="badge ${bc(r.esg_category)}">${r.esg_category}</span>
+              <span class="dsub">${r.sub_category}</span>
+              <span class="dco">${r.company}</span>
+              ${r.year ? `<span style="font-size:11px;color:var(--t3)">· ${r.year}년</span>` : ''}
+              ${r.submitter_name ? `<span class="dname">· ${r.submitter_name}</span>` : ''}
+            </div>
+            ${r.title ? `<div style="font-weight:600;color:var(--t1);margin:6px 0;font-size:13px">${r.title}</div>` : ''}
+            <a href="${r.link}" target="_blank" rel="noopener" class="dlink">🔗 ${r.link}</a>
+            ${r.description ? `<div class="ddesc">${r.description}</div>` : ''}
+          </div>
+          <div class="ddate">${fd(r.created_at)}</div>
+          <div style="display:flex;gap:4px">
+            <button class="btn-del" onclick="showEditModal(${JSON.stringify(r).replace(/'/g, "\\'")})" title="수정" style="background:var(--primary);color:white">✎</button>
+            <button class="btn-del" onclick="del('${r.id}')" title="삭제">✕</button>
+          </div>
+        </div>`).join('');
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div style="font-size:14px;font-weight:700">🛡 관리자 모드</div>
+      <button class="btn-sec" onclick="logout()">로그아웃</button>
+    </div>
+    <div class="metrics anim" style="grid-template-columns:repeat(3,1fr)">
+      <div class="metric"><div class="metric-label">총 제출</div><div class="metric-value">${rows.length}건</div></div>
+      <div class="metric"><div class="metric-label">참여 그룹사</div><div class="metric-value">${COMPANIES.filter(c=>coCnt[c]>0).length} / ${COMPANIES.length}</div></div>
+    </div>
+    <div class="card anim">
+      <div class="card-title">📁 전체 제출 문서 <span style="font-size:12px;font-weight:400;color:var(--t3)">${rows.length}건 · 링크 포함 전체 열람</span></div>
+      <div class="filters">${catBtns}</div>
+      <div class="filters" style="margin-bottom:14px">${coBtns}</div>
+      ${dataHTML}
+    </div>
+    <div class="card anim">
+      <div class="card-title" style="font-size:13px;margin-bottom:10px">🔑 관리자 비밀번호 변경</div>
+      <div class="pwdrow">
+        <input type="password" id="pw1" placeholder="새 비밀번호">
+        <input type="password" id="pw2" placeholder="확인">
+        <button class="btn-sec" onclick="chgPwd()">변경</button>
+        ${okPwd ? '<span style="color:var(--be-t);font-size:12px">✓ 변경 완료 (코드의 ADMIN_PASSWORD도 동일하게 수정해주세요)</span>' : ''}
+      </div>
+    </div>`;
+}
+
+function tryPin() {
+  pinErr = (document.getElementById('pin').value !== CONFIG.ADMIN_PASSWORD);
+  if (!pinErr) loggedIn = true;
+  rAdmin();
+}
+function logout() { loggedIn = false; rAdmin(); }
+function setFC(c)  { fCat = c; rAdmin(); }
+function setFCo(c) { fCo  = c; rAdmin(); }
+
+async function del(id) {
+  if (!confirm('이 항목을 삭제하시겠습니까?')) return;
+  await db.from('esg_submissions').delete().eq('id', id);
+  await load(); rAdmin();
+}
+
+function showEditModal(r) {
+  const subOptions = ESG[r.esg_category]?.map(s => `<option value="${s}" ${s===r.sub_category?'selected':''}>${s}</option>`).join('') || '';
+  const form = `
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">그룹사</label>
+        <select id="edit-co" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit">
+          ${COMPANIES.map(c => `<option value="${c}" ${c===r.company?'selected':''}>${c}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">정도경영 분류</label>
+        <select id="edit-cat" onchange="updateSubOptions()" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit">
+          ${CATS.map(c => `<option value="${c}" ${c===r.esg_category?'selected':''}>${c}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">세부분류</label>
+        <select id="edit-sub" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit">
+          ${subOptions}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">작성 연도</label>
+        <input type="number" id="edit-year" value="${r.year}" min="1900" max="2099" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit">
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">문서 설명</label>
+        <textarea id="edit-desc" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit;min-height:80px;resize:vertical">${r.description || ''}</textarea>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button onclick="updateDocument('${r.id}')" style="flex:1;padding:10px;background:var(--primary);color:white;border:none;border-radius:var(--rs);cursor:pointer;font-weight:600">저장</button>
+        <button onclick="closeEditModal()" style="flex:1;padding:10px;background:var(--border-l);color:var(--t2);border:none;border-radius:var(--rs);cursor:pointer;font-weight:600">취소</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('editForm').innerHTML = form;
+  document.getElementById('editModal').style.display = 'flex';
+  window.currentEditId = r.id;
+}
+
+function closeEditModal() {
+  document.getElementById('editModal').style.display = 'none';
+}
+
+function updateSubOptions() {
+  const cat = document.getElementById('edit-cat').value;
+  const subs = ESG[cat] || [];
+  const subSelect = document.getElementById('edit-sub');
+  subSelect.innerHTML = subs.map(s => `<option value="${s}">${s}</option>`).join('');
+}
+
+async function updateDocument(id) {
+  const co = document.getElementById('edit-co').value;
+  const cat = document.getElementById('edit-cat').value;
+  const sub = document.getElementById('edit-sub').value;
+  const year = parseInt(document.getElementById('edit-year').value);
+  const desc = document.getElementById('edit-desc').value;
+  
+  const { error } = await db.from('esg_submissions').update({
+    company: co, esg_category: cat, sub_category: sub, year, description: desc
+  }).eq('id', id);
+  
+  if (error) {
+    alert('업데이트 실패: ' + error.message);
+    return;
+  }
+  
+  closeEditModal();
+  await load(); rAdmin();
+}
+
+function chgPwd() {
+  const p1 = document.getElementById('pw1').value;
+  const p2 = document.getElementById('pw2').value;
+  if (!p1) { alert('새 비밀번호를 입력하세요'); return; }
+  if (p1 !== p2) { alert('비밀번호가 일치하지 않습니다'); return; }
+  CONFIG.ADMIN_PASSWORD = p1; okPwd = true; rAdmin();
+  setTimeout(() => { okPwd = false; }, 5000);
+}
+
+// Start
+init();
+</script>
+<div id="editModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border-radius:var(--r);padding:24px;max-width:500px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,0.2)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <div style="font-size:16px;font-weight:700;color:var(--t1)">문서 수정</div>
+      <button style="background:none;border:none;font-size:24px;cursor:pointer;color:var(--t3);padding:0" onclick="closeEditModal()">✕</button>
+    </div>
+    <div id="editForm"></div>
+  </div>
+</div>
+
+</body>
+</html>
