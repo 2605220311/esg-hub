@@ -604,15 +604,22 @@ async function updateDocument(id) {
   const year = parseInt(document.getElementById('edit-year').value);
   const desc = document.getElementById('edit-desc').value;
   
+  console.log('업데이트 시작:', { id, co, cat, sub, year, desc });
+  
+  if (!db) { alert('DB 연결 실패'); return; }
+  
   const { error } = await db.from('esg_submissions').update({
     company: co, esg_category: cat, sub_category: sub, year, description: desc
   }).eq('id', id);
+  
+  console.log('업데이트 결과:', error);
   
   if (error) {
     alert('업데이트 실패: ' + error.message);
     return;
   }
   
+  alert('저장 완료!');
   closeEditModal();
   await load(); rAdmin();
 }
