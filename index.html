@@ -497,6 +497,7 @@ function rAdmin() {
           <div class="ddate">${fd(r.created_at)}</div>
           <div style="display:flex;gap:4px">
             <button class="btn-del" onclick="showEditModal(${JSON.stringify(r).replace(/'/g, "\\'")})" title="수정" style="background:var(--primary);color:white">✎</button>
+            <button class="btn-del" onclick="showEditModal('${r.id}')" title="수정" style="background:var(--primary);color:white">✎</button>
             <button class="btn-del" onclick="del('${r.id}')" title="삭제">✕</button>
           </div>
         </div>`).join('');
