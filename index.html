@@ -6,6 +6,7 @@
   <title>정도경영 정성데이터 대시보드 · 동아쏘시오그룹</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.min.js"></script>
   <style>
     :root {
       --bg: #F4F1EC;
@@ -232,7 +233,20 @@ function init() {
   if (CONFIG.SUPABASE_URL !== 'YOUR_SUPABASE_URL') {
     try { db = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY); ready = true; } catch(e) {}
   }
+  initYearDropdown();
   load();
+}
+
+function initYearDropdown() {
+  const select = document.getElementById('f-year');
+  if (!select) return;
+  const currentYear = new Date().getFullYear();
+  for (let i = currentYear; i >= 2015; i--) {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = `${i}년`;
+    select.appendChild(opt);
+  }
 }
 
 async function load() {
@@ -299,16 +313,18 @@ function rSubmit() {
           <select id="f-sub"><option value="">정도경영 분류를 먼저 선택하세요</option></select>
         </div>
         <div class="fg full">
-          <span class="flabel">문서 링크 <span class="req">*</span></span>
-          <input type="url" id="f-link" placeholder="D-Cloud 내부 배포용 URL 복사">
-        </div>
-        <div class="fg full">
           <span class="flabel">문서 제목 <span class="req">*</span></span>
           <input type="text" id="f-title" placeholder="문서의 제목을 입력해주세요">
         </div>
+        <div class="fg full">
+          <span class="flabel">문서 링크 <span class="req">*</span></span>
+          <input type="url" id="f-link" placeholder="D-Cloud 내부 배포용 URL 복사">
+        </div>
         <div class="fg">
           <span class="flabel">문서 작성 연도 <span class="req">*</span></span>
-          <input type="number" id="f-year" placeholder="2024" min="1900" max="2099">
+          <select id="f-year" style="padding:10px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit;font-size:14px;background:var(--bg);color:var(--t1);cursor:pointer">
+            <option value="">연도 선택</option>
+          </select>
         </div>
         <div class="fg full">
           <span class="flabel">문서 설명 <span class="req">*</span></span>
@@ -504,7 +520,11 @@ function rAdmin() {
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
       <div style="font-size:14px;font-weight:700">🛡 관리자 모드</div>
-      <button class="btn-sec" onclick="logout()">로그아웃</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn-sec" onclick="openPasteModal()" style="background:#4CAF50;color:white">📋 텍스트 붙여넣기</button>
+        <button class="btn-sec" onclick="downloadExcel()" style="background:var(--primary);color:white">📥 엑셀 다운로드</button>
+        <button class="btn-sec" onclick="logout()">로그아웃</button>
+      </div>
     </div>
     <div class="metrics anim" style="grid-template-columns:repeat(3,1fr)">
       <div class="metric"><div class="metric-label">총 제출</div><div class="metric-value">${rows.length}건</div></div>
@@ -633,6 +653,78 @@ function chgPwd() {
   setTimeout(() => { okPwd = false; }, 5000);
 }
 
+function downloadExcel() {
+  const wsData = [
+    ['그룹사', '정도경영 분류', '세부항목', '문서제목', '작성연도', '문서링크', '제출자 부서/성명'],
+    ...rows.map(r => [
+      r.company,
+      r.esg_category,
+      r.sub_category,
+      r.title || '',
+      r.year || '',
+      r.link,
+      r.submitter_name || ''
+    ])
+  ];
+  
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "ESG 제출");
+  XLSX.writeFile(wb, `ESG_문서_${new Date().toISOString().split('T')[0]}.xlsx`);
+}
+
+function openPasteModal() {
+  document.getElementById('pasteModal').style.display = 'flex';
+  document.getElementById('pasteText').value = '';
+  document.getElementById('pasteText').focus();
+}
+
+function closePasteModal() {
+  document.getElementById('pasteModal').style.display = 'none';
+}
+
+async function handlePasteData() {
+  const text = document.getElementById('pasteText').value.trim();
+  if (!text) { alert('데이터를 붙여넣어주세요'); return; }
+  
+  const lines = text.split('\n').filter(l => l.trim());
+  if (lines.length < 1) { alert('최소 1행의 데이터가 필요합니다'); return; }
+  
+  let uploaded = 0;
+  let errors = [];
+  
+  for (let i = 0; i < lines.length; i++) {
+    const [co, cat, sub, title, year, link, submitter] = lines[i].split('\t');
+    
+    if (!co || !cat || !sub || !link) {
+      errors.push(`${i+1}행: 그룹사, 정도경영 분류, 세부항목, 문서링크는 필수`);
+      continue;
+    }
+    
+    const { error } = await db.from('esg_submissions').insert({
+      company: co.trim(),
+      esg_category: cat.trim(),
+      sub_category: sub.trim(),
+      title: title ? title.trim() : '',
+      year: year ? parseInt(year.trim()) : null,
+      link: link.trim(),
+      submitter_name: submitter ? submitter.trim() : '',
+      description: ''
+    });
+    
+    if (!error) uploaded++;
+    else errors.push(`${i+1}행: 저장 실패`);
+  }
+  
+  let msg = `✅ ${uploaded}개 문서 저장 완료!`;
+  if (errors.length > 0) msg += `\n❌ 오류: ${errors.join('\n')}`;
+  alert(msg);
+  
+  closePasteModal();
+  await load();
+  rAdmin();
+}
+
 // Start
 init();
 </script>
@@ -646,5 +738,22 @@ init();
   </div>
 </div>
 
-</body>
-</html>
+<div id="pasteModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border-radius:var(--r);padding:24px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,0.2)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <div style="font-size:16px;font-weight:700;color:var(--t1)">📋 Excel 데이터 붙여넣기</div>
+      <button style="background:none;border:none;font-size:24px;cursor:pointer;color:var(--t3);padding:0" onclick="closePasteModal()">✕</button>
+    </div>
+    <div style="margin-bottom:16px;padding:12px;background:var(--bg);border-radius:var(--rs);font-size:12px;color:var(--t2)">
+      💡 Excel에서 데이터 범위를 선택해서 복사한 후 아래에 붙여넣으세요<br>
+      (헤더 제외, 데이터만)
+    </div>
+    <textarea id="pasteText" placeholder="Excel에서 복사한 데이터를 여기에 붙여넣으세요&#10;예: 동아제약	준법경영	반부패	ESG정책	2025	https://...	정도경영팀 홍길동" style="width:100%;min-height:200px;padding:12px;border:1px solid var(--border);border-radius:var(--rs);font-family:monospace;font-size:12px;resize:vertical"></textarea>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button onclick="handlePasteData()" style="flex:1;padding:12px;background:var(--primary);color:white;border:none;border-radius:var(--rs);cursor:pointer;font-weight:600">💾 저장</button>
+      <button onclick="closePasteModal()" style="flex:1;padding:12px;background:var(--border-l);color:var(--t2);border:none;border-radius:var(--rs);cursor:pointer;font-weight:600">취소</button>
+    </div>
+  </div>
+</div>
+
+
