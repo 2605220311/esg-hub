@@ -4,9 +4,20 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>정도경영 정성데이터 대시보드 · 동아쏘시오그룹</title>
+
+  <!-- 링크 미리보기용 메타 태그 (Open Graph / Twitter Card) -->
+  <meta name="description" content="동아쏘시오그룹 정도경영 정성데이터 대시보드">
+  <meta property="og:title" content="정도경영 정성데이터 대시보드">
+  <meta property="og:description" content="동아쏘시오그룹 정도경영 정성데이터 대시보드">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="동아쏘시오그룹">
+  <meta property="og:locale" content="ko_KR">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="정도경영 정성데이터 대시보드">
+  <meta name="twitter:description" content="동아쏘시오그룹 정도경영 정성데이터 대시보드">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <style>
     :root {
       --bg: #F4F1EC;
@@ -679,23 +690,51 @@ function chgPwd() {
 }
 
 function downloadExcel() {
-  const wsData = [
-    ['그룹사', '정도경영 분류', '세부항목', '문서제목', '작성연도', '문서링크', '제출자 부서/성명'],
-    ...rows.map(r => [
-      r.company,
-      r.esg_category,
-      r.sub_category,
-      r.title || '',
-      r.year || '',
-      r.link,
-      r.submitter_name || ''
-    ])
-  ];
-  
-  const ws = XLSX.utils.aoa_to_sheet(wsData);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "ESG 제출");
-  XLSX.writeFile(wb, `ESG_문서_${new Date().toISOString().split('T')[0]}.xlsx`);
+  const headers = ['그룹사', '정도경영 분류', '세부항목', '문서제목', '작성연도', '문서링크', '제출자 부서/성명'];
+  const dataRows = rows.map(r => [
+    r.company,
+    r.esg_category,
+    r.sub_category,
+    r.title || '',
+    r.year || '',
+    r.link,
+    r.submitter_name || ''
+  ]);
+  const today = new Date().toISOString().split('T')[0];
+
+  // 1) XLSX 라이브러리가 정상 로드된 경우 → .xlsx 파일 생성
+  if (typeof XLSX !== 'undefined' && XLSX.utils && XLSX.writeFile) {
+    try {
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "ESG 제출");
+      XLSX.writeFile(wb, `정성데이터 양식_${today}.xlsx`);
+      return;
+    } catch (e) {
+      console.error('XLSX 생성 실패, CSV로 대체합니다:', e);
+      // 아래 CSV 폴백으로 진행
+    }
+  }
+
+  // 2) 폴백: CSV 다운로드 (엑셀에서 바로 열림, 한글 깨짐 방지 BOM 추가)
+  const escape = v => {
+    const s = String(v ?? '');
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const csv = [headers, ...dataRows].map(row => row.map(escape).join(',')).join('\r\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `정성데이터 양식_${today}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  if (typeof XLSX === 'undefined') {
+    alert('엑셀 라이브러리(XLSX)가 로드되지 않아 CSV로 다운로드했습니다.\nCSV 파일도 엑셀에서 정상적으로 열립니다.');
+  }
 }
 
 function openPasteModal() {
