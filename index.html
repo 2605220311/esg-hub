@@ -596,6 +596,10 @@ async function showEditModal(id) {
         <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">문서 설명</label>
         <textarea id="edit-desc" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit;min-height:80px;resize:vertical">${r.description || ''}</textarea>
       </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">제출자 부서, 성명</label>
+        <input type="text" id="edit-name" value="${(r.submitter_name || '').replace(/"/g, '&quot;')}" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit">
+      </div>
       <div style="display:flex;gap:8px;margin-top:8px">
         <button onclick="updateDocument('${r.id}')" style="flex:1;padding:10px;background:var(--primary);color:white;border:none;border-radius:var(--rs);cursor:pointer;font-weight:600">저장</button>
         <button onclick="closeEditModal()" style="flex:1;padding:10px;background:var(--border-l);color:var(--t2);border:none;border-radius:var(--rs);cursor:pointer;font-weight:600">취소</button>
@@ -627,14 +631,15 @@ async function updateDocument(id) {
   const yearVal = document.getElementById('edit-year').value;
   const year = yearVal ? parseInt(yearVal) : null;
   const desc = document.getElementById('edit-desc').value;
+  const name = document.getElementById('edit-name').value;
 
-  console.log('업데이트 시작:', { id, co, cat, sub, title, link, year, desc });
+  console.log('업데이트 시작:', { id, co, cat, sub, title, link, year, desc, name });
 
   if (!db) { alert('DB 연결 실패'); return; }
 
   // .select()를 체이닝해서 실제로 수정된 행을 반환받아 확인
   const { data, error } = await db.from('esg_submissions').update({
-    company: co, esg_category: cat, sub_category: sub, title, link, year, description: desc
+    company: co, esg_category: cat, sub_category: sub, title, link, year, description: desc, submitter_name: name
   }).eq('id', id).select();
 
   console.log('업데이트 결과:', { data, error });
