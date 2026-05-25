@@ -581,6 +581,14 @@ async function showEditModal(id) {
         </select>
       </div>
       <div>
+        <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">문서 제목</label>
+        <input type="text" id="edit-title" value="${(r.title || '').replace(/"/g, '&quot;')}" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit">
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">문서 링크</label>
+        <input type="url" id="edit-link" value="${(r.link || '').replace(/"/g, '&quot;')}" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit">
+      </div>
+      <div>
         <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">작성 연도</label>
         <input type="number" id="edit-year" value="${r.year}" min="1900" max="2099" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit">
       </div>
@@ -614,17 +622,19 @@ async function updateDocument(id) {
   const co = document.getElementById('edit-co').value;
   const cat = document.getElementById('edit-cat').value;
   const sub = document.getElementById('edit-sub').value;
+  const title = document.getElementById('edit-title').value;
+  const link = document.getElementById('edit-link').value;
   const yearVal = document.getElementById('edit-year').value;
   const year = yearVal ? parseInt(yearVal) : null;
   const desc = document.getElementById('edit-desc').value;
 
-  console.log('업데이트 시작:', { id, co, cat, sub, year, desc });
+  console.log('업데이트 시작:', { id, co, cat, sub, title, link, year, desc });
 
   if (!db) { alert('DB 연결 실패'); return; }
 
   // .select()를 체이닝해서 실제로 수정된 행을 반환받아 확인
   const { data, error } = await db.from('esg_submissions').update({
-    company: co, esg_category: cat, sub_category: sub, year, description: desc
+    company: co, esg_category: cat, sub_category: sub, title, link, year, description: desc
   }).eq('id', id).select();
 
   console.log('업데이트 결과:', { data, error });
