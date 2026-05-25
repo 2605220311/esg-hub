@@ -233,20 +233,7 @@ function init() {
   if (CONFIG.SUPABASE_URL !== 'YOUR_SUPABASE_URL') {
     try { db = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY); ready = true; } catch(e) {}
   }
-  initYearDropdown();
   load();
-}
-
-function initYearDropdown() {
-  const select = document.getElementById('f-year');
-  if (!select) return;
-  const currentYear = new Date().getFullYear();
-  for (let i = currentYear; i >= 2015; i--) {
-    const opt = document.createElement('option');
-    opt.value = i;
-    opt.textContent = `${i}년`;
-    select.appendChild(opt);
-  }
 }
 
 async function load() {
@@ -324,6 +311,12 @@ function rSubmit() {
           <span class="flabel">문서 작성 연도 <span class="req">*</span></span>
           <select id="f-year" style="padding:10px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit;font-size:14px;background:var(--bg);color:var(--t1);cursor:pointer">
             <option value="">연도 선택</option>
+            ${(() => {
+              const cy = new Date().getFullYear();
+              let opts = '';
+              for (let i = cy; i >= 2015; i--) opts += `<option value="${i}">${i}년</option>`;
+              return opts;
+            })()}
           </select>
         </div>
         <div class="fg full">
@@ -621,24 +614,41 @@ async function updateDocument(id) {
   const co = document.getElementById('edit-co').value;
   const cat = document.getElementById('edit-cat').value;
   const sub = document.getElementById('edit-sub').value;
-  const year = parseInt(document.getElementById('edit-year').value);
+  const yearVal = document.getElementById('edit-year').value;
+  const year = yearVal ? parseInt(yearVal) : null;
   const desc = document.getElementById('edit-desc').value;
-  
+
   console.log('업데이트 시작:', { id, co, cat, sub, year, desc });
-  
+
   if (!db) { alert('DB 연결 실패'); return; }
-  
-  const { error } = await db.from('esg_submissions').update({
+
+  // .select()를 체이닝해서 실제로 수정된 행을 반환받아 확인
+  const { data, error } = await db.from('esg_submissions').update({
     company: co, esg_category: cat, sub_category: sub, year, description: desc
-  }).eq('id', id);
-  
-  console.log('업데이트 결과:', error);
-  
+  }).eq('id', id).select();
+
+  console.log('업데이트 결과:', { data, error });
+
   if (error) {
     alert('업데이트 실패: ' + error.message);
     return;
   }
-  
+
+  // 에러는 없는데 수정된 행이 0개 → RLS 정책으로 차단된 경우
+  if (!data || data.length === 0) {
+    alert(
+      '⚠ 수정이 적용되지 않았습니다 (0개 행 변경됨)\n\n' +
+      '원인: Supabase Row Level Security(RLS)에서 UPDATE 권한이 차단되어 있습니다.\n\n' +
+      '해결 방법:\n' +
+      'Supabase Dashboard → Authentication → Policies에서\n' +
+      'esg_submissions 테이블에 UPDATE policy를 추가해주세요.\n\n' +
+      '예시 SQL:\n' +
+      'CREATE POLICY "Enable update for anon" ON esg_submissions\n' +
+      'FOR UPDATE USING (true) WITH CHECK (true);'
+    );
+    return;
+  }
+
   alert('저장 완료!');
   closeEditModal();
   await load(); rAdmin();
