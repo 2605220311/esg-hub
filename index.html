@@ -328,7 +328,15 @@ function rSubmit() {
         </div>
         <div class="fg full">
           <span class="flabel">세부 항목 <span class="req">*</span></span>
-          <select id="f-sub"><option value="">정도경영 분류를 먼저 선택하세요</option></select>
+          <select id="f-sub" onchange="toggleCertDates()"><option value="">정도경영 분류를 먼저 선택하세요</option></select>
+        </div>
+        <div class="fg" id="f-cert-issue-wrap" style="display:none">
+          <span class="flabel">인증서 발행일</span>
+          <input type="date" id="f-cert-issue">
+        </div>
+        <div class="fg" id="f-cert-expiry-wrap" style="display:none">
+          <span class="flabel">유효기간 만료일</span>
+          <input type="date" id="f-cert-expiry">
         </div>
         <div class="fg full">
           <span class="flabel">문서 제목 <span class="req">*</span></span>
@@ -390,6 +398,16 @@ function updSub() {
   document.getElementById('f-sub').innerHTML = cat
     ? '<option value="">세부 항목을 선택해주세요</option>' + (ESG[cat]||[]).map(s=>`<option>${s}</option>`).join('')
     : '<option value="">정도경영 분류를 먼저 선택하세요</option>';
+  toggleCertDates();
+}
+
+function toggleCertDates() {
+  const sub = document.getElementById('f-sub').value;
+  const show = sub === '인증서';
+  const issueWrap = document.getElementById('f-cert-issue-wrap');
+  const expiryWrap = document.getElementById('f-cert-expiry-wrap');
+  if (issueWrap) issueWrap.style.display = show ? '' : 'none';
+  if (expiryWrap) expiryWrap.style.display = show ? '' : 'none';
 }
 
 async function doSubmit() {
@@ -401,8 +419,10 @@ async function doSubmit() {
   const year  = document.getElementById('f-year').value;
   const desc  = document.getElementById('f-desc').value;
   const name  = document.getElementById('f-name').value;
+  const issueDate  = sub === '인증서' ? (document.getElementById('f-cert-issue').value || null) : null;
+  const expiryDate = sub === '인증서' ? (document.getElementById('f-cert-expiry').value || null) : null;
 
-  console.log('제출 시작:', { co, cat, sub, link, title, year, desc, name });
+  console.log('제출 시작:', { co, cat, sub, link, title, year, desc, name, issueDate, expiryDate });
 
   if (!co||!cat||!sub||!link||!title||!year||!desc||!name) {
     const missing = [];
@@ -437,6 +457,7 @@ async function doSubmit() {
   const { data, error } = await db.from('esg_submissions').insert([{
     company: co, esg_category: cat, sub_category: sub,
     link, title, year: parseInt(year), description: desc, submitter_name: name,
+    issue_date: issueDate, expiry_date: expiryDate,
   }]).select();
 
   console.log('제출 결과:', { data, error });
@@ -572,6 +593,7 @@ function showCellDetails(co, cat, sub) {
             ${r.year ? `<span style="font-size:11px;color:var(--t3)">· ${r.year}년</span>` : ''}
           </div>
           ${r.title ? `<div style="font-weight:600;color:var(--t1);font-size:13px;margin-bottom:4px">${esc(r.title)}</div>` : '<div style="font-size:12px;color:var(--t3);font-style:italic;margin-bottom:4px">제목 없음</div>'}
+          ${r.sub_category === '인증서' && (r.issue_date || r.expiry_date) ? `<div style="font-size:11px;color:var(--t2);margin-bottom:4px">📅 발행일: ${esc(r.issue_date || '—')} · 만료일: ${esc(r.expiry_date || '—')}</div>` : ''}
           ${r.submitter_name ? `<div style="font-size:11px;color:var(--t2)">👤 ${esc(r.submitter_name)}</div>` : ''}
         </div>
       `).join('');
@@ -629,6 +651,7 @@ function rAdmin() {
               ${r.submitter_name ? `<span class="dname">· ${r.submitter_name}</span>` : ''}
             </div>
             ${r.title ? `<div style="font-weight:600;color:var(--t1);margin:6px 0;font-size:13px">${r.title}</div>` : ''}
+            ${r.sub_category === '인증서' && (r.issue_date || r.expiry_date) ? `<div style="font-size:11px;color:var(--t2);margin:4px 0">📅 발행일: ${r.issue_date || '—'} · 만료일: ${r.expiry_date || '—'}</div>` : ''}
             <a href="${r.link}" target="_blank" rel="noopener" class="dlink">🔗 ${r.link}</a>
             ${r.description ? `<div class="ddesc">${r.description}</div>` : ''}
           </div>
@@ -771,9 +794,17 @@ async function showEditModal(id) {
       </div>
       <div>
         <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">세부분류</label>
-        <select id="edit-sub" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit">
+        <select id="edit-sub" onchange="toggleEditCertDates()" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit">
           ${subOptions}
         </select>
+      </div>
+      <div id="edit-cert-issue-wrap" style="display:${r.sub_category === '인증서' ? 'block' : 'none'}">
+        <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">인증서 발행일</label>
+        <input type="date" id="edit-cert-issue" value="${r.issue_date || ''}" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit">
+      </div>
+      <div id="edit-cert-expiry-wrap" style="display:${r.sub_category === '인증서' ? 'block' : 'none'}">
+        <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">유효기간 만료일</label>
+        <input type="date" id="edit-cert-expiry" value="${r.expiry_date || ''}" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit">
       </div>
       <div>
         <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">문서 제목</label>
@@ -815,6 +846,16 @@ function updateSubOptions() {
   const subs = ESG[cat] || [];
   const subSelect = document.getElementById('edit-sub');
   subSelect.innerHTML = subs.map(s => `<option value="${s}">${s}</option>`).join('');
+  toggleEditCertDates();
+}
+
+function toggleEditCertDates() {
+  const sub = document.getElementById('edit-sub').value;
+  const show = sub === '인증서';
+  const issueWrap = document.getElementById('edit-cert-issue-wrap');
+  const expiryWrap = document.getElementById('edit-cert-expiry-wrap');
+  if (issueWrap) issueWrap.style.display = show ? 'block' : 'none';
+  if (expiryWrap) expiryWrap.style.display = show ? 'block' : 'none';
 }
 
 async function updateDocument(id) {
@@ -827,14 +868,17 @@ async function updateDocument(id) {
   const year = yearVal ? parseInt(yearVal) : null;
   const desc = document.getElementById('edit-desc').value;
   const name = document.getElementById('edit-name').value;
+  const issueDate  = sub === '인증서' ? (document.getElementById('edit-cert-issue').value || null) : null;
+  const expiryDate = sub === '인증서' ? (document.getElementById('edit-cert-expiry').value || null) : null;
 
-  console.log('업데이트 시작:', { id, co, cat, sub, title, link, year, desc, name });
+  console.log('업데이트 시작:', { id, co, cat, sub, title, link, year, desc, name, issueDate, expiryDate });
 
   if (!db) { alert('DB 연결 실패'); return; }
 
   // .select()를 체이닝해서 실제로 수정된 행을 반환받아 확인
   const { data, error } = await db.from('esg_submissions').update({
-    company: co, esg_category: cat, sub_category: sub, title, link, year, description: desc, submitter_name: name
+    company: co, esg_category: cat, sub_category: sub, title, link, year, description: desc, submitter_name: name,
+    issue_date: issueDate, expiry_date: expiryDate
   }).eq('id', id).select();
 
   console.log('업데이트 결과:', { data, error });
@@ -874,13 +918,15 @@ function chgPwd() {
 }
 
 function downloadExcel() {
-  const headers = ['그룹사', '정도경영 분류', '세부항목', '문서제목', '작성연도', '문서링크', '제출자 부서/성명'];
+  const headers = ['그룹사', '정도경영 분류', '세부항목', '문서제목', '작성연도', '인증서 발행일', '인증서 만료일', '문서링크', '제출자 부서/성명'];
   const dataRows = rows.map(r => [
     r.company,
     r.esg_category,
     r.sub_category,
     r.title || '',
     r.year || '',
+    r.issue_date || '',
+    r.expiry_date || '',
     r.link,
     r.submitter_name || ''
   ]);
