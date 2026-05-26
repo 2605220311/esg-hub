@@ -189,6 +189,7 @@
   <nav class="nav-tabs">
     <button class="nav-tab" id="tab-submit" onclick="go('submit')">문서 제출</button>
     <button class="nav-tab active" id="tab-status" onclick="go('status')">현황 확인</button>
+    <button class="nav-tab" id="tab-iso" onclick="go('iso')">🏆 인증서</button>
     <button class="nav-tab at" id="tab-admin" onclick="go('admin')">🔒 관리자</button>
   </nav>
 </header>
@@ -196,6 +197,7 @@
 <div class="container">
   <div id="view-submit" style="display:none"></div>
   <div id="view-status"></div>
+  <div id="view-iso" style="display:none"></div>
   <div id="view-admin" style="display:none"></div>
 </div>
 
@@ -228,9 +230,24 @@ const ESG = {
 /* ================================================================ */
 
 const CATS = Object.keys(ESG);
+
+// 흔히 쓰이는 ISO 인증서 (인증서 입력 시 자동완성용)
+const ISO_SUGGESTIONS = [
+  'ISO 9001 (품질경영)',
+  'ISO 14001 (환경경영)',
+  'ISO 27001 (정보보안)',
+  'ISO 37001 (반부패경영)',
+  'ISO 37301 (준법경영)',
+  'ISO 45001 (안전보건)',
+  'ISO 50001 (에너지경영)',
+  'ISO 22301 (사업연속성)',
+  'ISO 13485 (의료기기 품질)',
+  'ISO 17025 (시험·교정 능력)',
+];
 let db = null;
 let ready = false;
 let rows = [];
+let isoData = [];
 let view = 'status';
 let loggedIn = false;
 let pinErr = false;
@@ -272,13 +289,21 @@ async function load() {
   }
 
   if (data) rows = data;
+
+  // ISO 인증서 데이터 로드
+  try {
+    const res = await db.from('iso_certificates').select('*')
+      .order('company').order('cert_name');
+    if (!res.error && res.data) isoData = res.data;
+  } catch (_) { /* 테이블이 아직 없는 경우 조용히 무시 */ }
+
   render();
 }
 
 // ── Routing ───────────────────────────────────────────────────────
 function go(v) {
   view = v;
-  ['submit','status','admin'].forEach(x => {
+  ['submit','status','iso','admin'].forEach(x => {
     document.getElementById('view-' + x).style.display = x === v ? '' : 'none';
     const t = document.getElementById('tab-' + x);
     t.className = 'nav-tab' + (x === 'admin' ? ' at' : '') + (x === v ? ' active' : '');
@@ -289,6 +314,7 @@ function go(v) {
 function render() {
   if (view === 'submit') rSubmit();
   else if (view === 'status') rStatus();
+  else if (view === 'iso') rIso();
   else rAdmin();
 }
 
@@ -708,6 +734,387 @@ function logout() { loggedIn = false; rAdmin(); }
 function setFC(c)  { fCat = c; rAdmin(); }
 function setFCo(c) { fCo  = c; rAdmin(); }
 
+// ── ISO 인증서 관리 ───────────────────────────────────────────────
+let isoEditId = null;  // null이면 신규 추가, id가 있으면 편집
+
+// 두 데이터 소스 통합: iso_certificates 테이블 + esg_submissions의 '인증서' 세부항목
+function getAllCerts() {
+  const fromDocs = rows
+    .filter(r => r.sub_category === '인증서')
+    .map(r => ({
+      id: 'doc-' + r.id,
+      _source: 'doc',          // 출처: 문서 제출
+      _docId: r.id,
+      _docLink: r.link,
+      company: r.company,
+      cert_name: r.title || '(제목 없음)',
+      issue_date: r.issue_date,
+      expiry_date: r.expiry_date,
+      status: 'active',         // 문서는 항상 활성으로 간주 (만료는 날짜로 자동 판별)
+      notes: r.description,
+      esg_category: r.esg_category,
+      year: r.year,
+      submitter_name: r.submitter_name,
+    }));
+  const fromIso = isoData.map(c => ({ ...c, _source: 'iso' }));
+  return [...fromIso, ...fromDocs].sort((a, b) =>
+    (a.company + a.cert_name).localeCompare(b.company + b.cert_name)
+  );
+}
+
+// 인증서 상태 계산: 'active' / 'expiring' / 'expired' / 'discontinued'
+function isoStatus(cert) {
+  if (cert.status === 'discontinued') return 'discontinued';
+  if (!cert.expiry_date) return 'active';
+  const today = new Date(); today.setHours(0,0,0,0);
+  const expiry = new Date(cert.expiry_date);
+  const days = Math.floor((expiry - today) / 86400000);
+  if (days < 0) return 'expired';
+  if (days <= 90) return 'expiring';
+  return 'active';
+}
+
+const ISO_STATUS_LABEL = {
+  active: { text: '진행 중', bg: '#E8F0DC', fg: '#4A7818' },
+  expiring: { text: '만료 임박', bg: '#FFF4D6', fg: '#B07000' },
+  expired: { text: '만료', bg: '#FDE4E0', fg: '#A0331E' },
+  discontinued: { text: '중단', bg: '#EDEAE3', fg: '#6E6B66' },
+};
+
+function rIso() {
+  const allCerts = getAllCerts();
+  const total = allCerts.length;
+  const active = allCerts.filter(c => isoStatus(c) === 'active').length;
+  const expiring = allCerts.filter(c => isoStatus(c) === 'expiring').length;
+  const expired = allCerts.filter(c => isoStatus(c) === 'expired').length;
+  const discontinued = allCerts.filter(c => isoStatus(c) === 'discontinued').length;
+
+  // 매트릭스용: 등장하는 모든 cert_name
+  const allCertNames = [...new Set(allCerts.map(c => c.cert_name))].sort();
+
+  document.getElementById('view-iso').innerHTML = `
+    <div class="card anim">
+      <div class="card-title">🏆 인증서 관리</div>
+      <div style="font-size:11px;color:var(--t2);background:var(--bg);padding:8px 12px;border-radius:var(--rs);margin-bottom:12px">
+        💡 문서 제출 시 세부항목을 <strong>'인증서'</strong>로 선택하면 자동으로 이 탭에 표시됩니다. 직접 추가도 가능합니다.
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:6px">
+        <div style="padding:12px;background:var(--bg);border-radius:var(--rs);text-align:center">
+          <div style="font-size:11px;color:var(--t3);margin-bottom:2px">전체</div>
+          <div style="font-size:20px;font-weight:700;color:var(--t1)">${total}</div>
+        </div>
+        <div style="padding:12px;background:#E8F0DC;border-radius:var(--rs);text-align:center">
+          <div style="font-size:11px;color:#4A7818;margin-bottom:2px">진행 중</div>
+          <div style="font-size:20px;font-weight:700;color:#4A7818">${active}</div>
+        </div>
+        <div style="padding:12px;background:#FFF4D6;border-radius:var(--rs);text-align:center">
+          <div style="font-size:11px;color:#B07000;margin-bottom:2px">만료 임박</div>
+          <div style="font-size:20px;font-weight:700;color:#B07000">${expiring}</div>
+        </div>
+        <div style="padding:12px;background:#FDE4E0;border-radius:var(--rs);text-align:center">
+          <div style="font-size:11px;color:#A0331E;margin-bottom:2px">만료</div>
+          <div style="font-size:20px;font-weight:700;color:#A0331E">${expired}</div>
+        </div>
+        <div style="padding:12px;background:#EDEAE3;border-radius:var(--rs);text-align:center">
+          <div style="font-size:11px;color:#6E6B66;margin-bottom:2px">중단</div>
+          <div style="font-size:20px;font-weight:700;color:#6E6B66">${discontinued}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card anim">
+      <div class="card-title">📋 그룹사별 인증 현황</div>
+      ${allCertNames.length === 0
+        ? `<div class="empty"><div class="eico">📭</div>등록된 인증서가 없습니다</div>`
+        : `<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:12px">
+            <thead>
+              <tr style="background:var(--bg)">
+                <th style="padding:10px;text-align:left;border:1px solid var(--border);position:sticky;left:0;background:var(--bg);min-width:110px">그룹사</th>
+                ${allCertNames.map(name => `<th style="padding:10px;text-align:center;border:1px solid var(--border);white-space:nowrap;font-size:11px">${name}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${COMPANIES.map(co => {
+                const coCerts = allCerts.filter(c => c.company === co);
+                if (coCerts.length === 0) return '';
+                return `<tr>
+                  <td style="padding:8px 10px;border:1px solid var(--border);font-weight:600;background:var(--surface);position:sticky;left:0">${co}</td>
+                  ${allCertNames.map(name => {
+                    const cert = coCerts.find(c => c.cert_name === name);
+                    if (!cert) return `<td style="padding:8px;text-align:center;border:1px solid var(--border);color:var(--t3)">—</td>`;
+                    const st = isoStatus(cert);
+                    const meta = ISO_STATUS_LABEL[st];
+                    const icon = st === 'discontinued' ? '✕' : st === 'expired' ? '⚠' : st === 'expiring' ? '⏰' : '✓';
+                    return `<td style="padding:6px 8px;text-align:center;border:1px solid var(--border);background:${meta.bg};color:${meta.fg};cursor:pointer" onclick="openIsoModal('${cert.id}')" title="클릭해서 상세보기">
+                      <div style="font-size:14px;font-weight:700">${icon}</div>
+                      <div style="font-size:10px;margin-top:2px">${cert.expiry_date ? '~' + cert.expiry_date.substring(2,7).replace('-','.') : ''}</div>
+                    </td>`;
+                  }).join('')}
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table></div>`}
+    </div>
+
+    <div class="card anim">
+      <div class="card-title">📅 인증 타임라인 <span style="font-size:11px;font-weight:400;color:var(--t3)">· 발행일 ~ 만료일 기준</span></div>
+      ${renderGantt(allCerts)}
+    </div>
+
+    <div class="card anim">
+      <div class="card-title">📝 인증서 목록 <span style="font-size:12px;font-weight:400;color:var(--t3)">${allCerts.length}건 · 📄 문서 ${allCerts.filter(c=>c._source==='doc').length}건 · 직접 등록 ${isoData.length}건</span></div>
+      <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn-sec" onclick="openIsoModal()" style="background:var(--primary);color:white">+ 인증서 직접 추가</button>
+      </div>
+      <datalist id="iso-suggestions">
+        ${ISO_SUGGESTIONS.map(s => `<option value="${s}">`).join('')}
+      </datalist>
+      ${allCerts.length === 0
+        ? `<div class="empty"><div class="eico">📭</div>등록된 인증서가 없습니다</div>`
+        : `<div style="display:flex;flex-direction:column;gap:8px">
+            ${allCerts.map(c => {
+              const st = isoStatus(c);
+              const meta = ISO_STATUS_LABEL[st];
+              const isDoc = c._source === 'doc';
+              return `<div style="padding:12px 14px;background:var(--bg);border-radius:var(--rs);border:1px solid var(--border-l);display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+                <div style="flex:1">
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:4px">
+                    <span style="font-weight:700;color:var(--t1)">${c.company}</span>
+                    <span style="color:var(--t2)">·</span>
+                    <span style="font-weight:600;color:var(--t1)">${c.cert_name}</span>
+                    <span style="padding:2px 8px;border-radius:4px;background:${meta.bg};color:${meta.fg};font-size:11px;font-weight:600">${meta.text}</span>
+                    ${isDoc
+                      ? `<span style="padding:2px 6px;border-radius:4px;background:#EAE6DD;color:#6E6B66;font-size:10px;font-weight:600" title="문서 제출에서 자동 등록됨">📄 문서 연동</span>`
+                      : `<span style="padding:2px 6px;border-radius:4px;background:#E0EAF0;color:#3D6080;font-size:10px;font-weight:600">✋ 직접 등록</span>`}
+                  </div>
+                  <div style="font-size:12px;color:var(--t2)">
+                    📅 ${c.issue_date || '—'} ~ ${c.expiry_date || '—'}
+                    ${c.year ? ` · 작성연도 ${c.year}` : ''}
+                    ${c.submitter_name ? ` · ${c.submitter_name}` : ''}
+                  </div>
+                  ${c.notes ? `<div style="font-size:11px;color:var(--t3);margin-top:6px;padding-top:6px;border-top:1px dashed var(--border-l)">📝 ${c.notes}</div>` : ''}
+                </div>
+                <div style="display:flex;gap:4px;flex-shrink:0">
+                  ${isDoc
+                    ? `<a href="${c._docLink}" target="_blank" rel="noopener" class="btn-del" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;background:var(--bg)" title="원본 문서 링크 열기">🔗</a>
+                       <button class="btn-del" onclick="alert('📄 문서 제출로 등록된 항목입니다.\\n수정/삭제는 관리자 페이지에서 해당 문서를 편집해주세요.')" title="문서로 등록된 항목 — 관리자 페이지에서 수정" style="opacity:0.4;cursor:help">📄</button>`
+                    : `<button class="btn-del" onclick="openIsoModal('${c.id}')" title="수정" style="background:var(--primary);color:white">✎</button>
+                       <button class="btn-del" onclick="deleteIso('${c.id}')" title="삭제">✕</button>`}
+                </div>
+              </div>`;
+            }).join('')}
+          </div>`}
+    </div>
+  `;
+}
+
+// Gantt 차트 SVG 렌더링
+function renderGantt(allCerts) {
+  const certs = allCerts.filter(c => c.issue_date || c.expiry_date);
+  if (certs.length === 0) return `<div class="empty"><div class="eico">📅</div>타임라인을 표시할 데이터가 없습니다</div>`;
+
+  // 시간 범위 계산
+  const allDates = certs.flatMap(c => [c.issue_date, c.expiry_date]).filter(Boolean).map(d => new Date(d));
+  const minYear = Math.min(...allDates.map(d => d.getFullYear()));
+  const maxYear = Math.max(...allDates.map(d => d.getFullYear()), new Date().getFullYear()) + 1;
+  const yearSpan = maxYear - minYear;
+
+  // SVG 크기 계산
+  const labelWidth = 200;
+  const yearWidth = 80;
+  const rowHeight = 32;
+  const padding = { top: 30, bottom: 10 };
+  const totalWidth = labelWidth + yearWidth * yearSpan + 20;
+  const totalHeight = padding.top + certs.length * rowHeight + padding.bottom;
+
+  // X 좌표 계산 헬퍼
+  const dateToX = d => {
+    const dt = new Date(d);
+    const yearOffset = (dt - new Date(minYear, 0, 1)) / (365.25 * 86400000);
+    return labelWidth + yearOffset * yearWidth;
+  };
+
+  let svg = `<div style="overflow-x:auto;border:1px solid var(--border-l);border-radius:var(--rs);padding:8px;background:var(--surface)">
+    <svg viewBox="0 0 ${totalWidth} ${totalHeight}" xmlns="http://www.w3.org/2000/svg" style="min-width:${totalWidth}px;font-family:inherit;font-size:10px">`;
+
+  // 연도 격자선 + 라벨
+  for (let y = 0; y <= yearSpan; y++) {
+    const x = labelWidth + y * yearWidth;
+    svg += `<line x1="${x}" y1="${padding.top - 10}" x2="${x}" y2="${totalHeight}" stroke="#E2DED6" stroke-width="1"/>`;
+    if (y < yearSpan) {
+      svg += `<text x="${x + yearWidth/2}" y="${padding.top - 14}" text-anchor="middle" fill="#6E6B66" font-size="11" font-weight="600">${minYear + y}</text>`;
+    }
+  }
+
+  // 오늘 표시선
+  const today = new Date();
+  if (today.getFullYear() >= minYear && today.getFullYear() < maxYear) {
+    const todayX = dateToX(today);
+    svg += `<line x1="${todayX}" y1="${padding.top - 5}" x2="${todayX}" y2="${totalHeight - 5}" stroke="#C0883B" stroke-width="1.5" stroke-dasharray="4,3"/>`;
+    svg += `<text x="${todayX + 4}" y="${padding.top + 4}" fill="#C0883B" font-weight="700" font-size="10">오늘</text>`;
+  }
+
+  // 인증서별 행 (회사·인증명 기준 정렬)
+  const sorted = [...certs].sort((a,b) => (a.company+a.cert_name).localeCompare(b.company+b.cert_name));
+  sorted.forEach((c, i) => {
+    const y = padding.top + i * rowHeight;
+    const yMid = y + rowHeight / 2;
+
+    // 행 배경 (지브라)
+    if (i % 2 === 1) {
+      svg += `<rect x="0" y="${y}" width="${totalWidth}" height="${rowHeight}" fill="#F8F6F2" opacity="0.5"/>`;
+    }
+
+    // 라벨 (회사 · 인증명)
+    svg += `<text x="${labelWidth - 10}" y="${yMid + 4}" text-anchor="end" fill="#1A1A18" font-size="11" font-weight="600">${c.company} · ${c.cert_name.length > 18 ? c.cert_name.substring(0,18)+'…' : c.cert_name}</text>`;
+
+    // 바
+    if (c.issue_date && c.expiry_date) {
+      const x1 = dateToX(c.issue_date);
+      const x2 = dateToX(c.expiry_date);
+      const st = isoStatus(c);
+      const color = st === 'discontinued' ? '#9E9D97' :
+                    st === 'expired' ? '#C0392B' :
+                    st === 'expiring' ? '#C0883B' : '#5C9620';
+      const opacity = st === 'discontinued' ? 0.45 : 0.85;
+      svg += `<rect x="${x1}" y="${y + 6}" width="${Math.max(2, x2 - x1)}" height="${rowHeight - 12}" fill="${color}" opacity="${opacity}" rx="3" style="cursor:pointer" onclick="openIsoModal('${c.id}')"><title>${c.company} · ${c.cert_name}
+${c.issue_date} ~ ${c.expiry_date}
+${ISO_STATUS_LABEL[st].text}</title></rect>`;
+      // 중단 시 X 표시
+      if (st === 'discontinued') {
+        svg += `<line x1="${x1}" y1="${y+6}" x2="${x2}" y2="${y+rowHeight-6}" stroke="#A0331E" stroke-width="2"/>`;
+        svg += `<line x1="${x2}" y1="${y+6}" x2="${x1}" y2="${y+rowHeight-6}" stroke="#A0331E" stroke-width="2"/>`;
+      }
+    } else if (c.issue_date) {
+      // 발행일만 있고 만료일 없음 — 점으로 표시
+      svg += `<circle cx="${dateToX(c.issue_date)}" cy="${yMid}" r="5" fill="#5C9620" opacity="0.8"/>`;
+    }
+  });
+
+  svg += `</svg></div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-top:10px;font-size:11px;color:var(--t2)">
+      <span><span style="display:inline-block;width:12px;height:12px;background:#5C9620;opacity:0.85;border-radius:2px;vertical-align:middle"></span> 진행 중</span>
+      <span><span style="display:inline-block;width:12px;height:12px;background:#C0883B;opacity:0.85;border-radius:2px;vertical-align:middle"></span> 만료 임박</span>
+      <span><span style="display:inline-block;width:12px;height:12px;background:#C0392B;opacity:0.85;border-radius:2px;vertical-align:middle"></span> 만료</span>
+      <span><span style="display:inline-block;width:12px;height:12px;background:#9E9D97;opacity:0.45;border-radius:2px;vertical-align:middle"></span> 중단</span>
+    </div>`;
+  return svg;
+}
+
+// 인증서 추가/편집 모달 열기
+function openIsoModal(id) {
+  // 문서 연동 항목은 편집 불가, 안내만 표시
+  if (id && id.startsWith('doc-')) {
+    const docId = id.substring(4);
+    const doc = rows.find(r => r.id === docId);
+    if (!doc) return;
+    if (confirm(
+      '📄 이 인증서는 문서 제출에서 자동 등록된 항목입니다.\n\n' +
+      '• 그룹사: ' + doc.company + '\n' +
+      '• 분류: ' + doc.esg_category + ' / 인증서\n' +
+      '• 제목: ' + (doc.title || '(없음)') + '\n' +
+      '• 발행일: ' + (doc.issue_date || '—') + '\n' +
+      '• 만료일: ' + (doc.expiry_date || '—') + '\n' +
+      '• 제출자: ' + (doc.submitter_name || '—') + '\n\n' +
+      '원본 문서 링크를 새 창으로 열까요?\n(수정은 관리자 페이지에서 해당 문서를 편집해주세요)'
+    )) {
+      window.open(doc.link, '_blank', 'noopener');
+    }
+    return;
+  }
+
+  isoEditId = id || null;
+  const cert = id ? isoData.find(c => c.id === id) : {};
+  if (id && !cert) return;
+
+  document.getElementById('isoModalBody').innerHTML = `
+    <div style="display:grid;gap:14px">
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">그룹사 *</label>
+        <select id="iso-co" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit">
+          ${COMPANIES.map(c => `<option value="${c}" ${c===cert.company?'selected':''}>${c}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">인증서 이름 *</label>
+        <input type="text" id="iso-name" list="iso-suggestions" value="${(cert.cert_name||'').replace(/"/g,'&quot;')}" placeholder="예: ISO 9001 (품질경영)" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit">
+        <div style="font-size:10px;color:var(--t3);margin-top:4px">💡 입력란을 클릭하면 자주 쓰는 인증서 목록이 나옵니다</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">발행일</label>
+          <input type="date" id="iso-issue" value="${cert.issue_date||''}" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">만료일</label>
+          <input type="date" id="iso-expiry" value="${cert.expiry_date||''}" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit">
+        </div>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">상태</label>
+        <select id="iso-status" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit">
+          <option value="active" ${cert.status!=='discontinued'?'selected':''}>유지 (만료일에 따라 자동 분류)</option>
+          <option value="discontinued" ${cert.status==='discontinued'?'selected':''}>중단 — 더 이상 갱신하지 않음</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">비고</label>
+        <textarea id="iso-notes" placeholder="중단 사유, 갱신 예정, 담당부서 등" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit;min-height:60px;resize:vertical">${cert.notes||''}</textarea>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:18px">
+      <button class="btn-sec" onclick="closeIsoModal()" style="flex:1">취소</button>
+      <button class="btn-sec" onclick="saveIso()" style="flex:1;background:var(--primary);color:white">${id ? '저장' : '추가'}</button>
+    </div>
+  `;
+  document.getElementById('isoModalTitle').textContent = id ? '🏆 인증서 수정' : '🏆 인증서 추가';
+  document.getElementById('isoModal').style.display = 'flex';
+}
+
+function closeIsoModal() {
+  document.getElementById('isoModal').style.display = 'none';
+  isoEditId = null;
+}
+
+async function saveIso() {
+  const co     = document.getElementById('iso-co').value;
+  const name   = document.getElementById('iso-name').value.trim();
+  const issue  = document.getElementById('iso-issue').value || null;
+  const expiry = document.getElementById('iso-expiry').value || null;
+  const status = document.getElementById('iso-status').value;
+  const notes  = document.getElementById('iso-notes').value || null;
+
+  if (!co || !name) { alert('그룹사와 인증서 이름은 필수입니다.'); return; }
+  if (!db) { alert('DB 연결 실패'); return; }
+
+  const payload = { company: co, cert_name: name, issue_date: issue, expiry_date: expiry, status, notes };
+
+  let res;
+  if (isoEditId) {
+    res = await db.from('iso_certificates').update(payload).eq('id', isoEditId).select();
+  } else {
+    res = await db.from('iso_certificates').insert([payload]).select();
+  }
+
+  if (res.error) { alert('저장 실패: ' + res.error.message); return; }
+  if (!res.data || res.data.length === 0) {
+    alert('⚠ 저장이 적용되지 않았습니다.\n\nSupabase에 iso_certificates 테이블과 RLS 정책이 있는지 확인해주세요.');
+    return;
+  }
+
+  closeIsoModal();
+  await load();
+  rIso();
+}
+
+async function deleteIso(id) {
+  if (!confirm('이 인증서 항목을 삭제하시겠습니까?')) return;
+  const { error } = await db.from('iso_certificates').delete().eq('id', id);
+  if (error) { alert('삭제 실패: ' + error.message); return; }
+  await load();
+  rIso();
+}
+
 async function del(id) {
   if (!confirm('이 항목을 삭제하시겠습니까?')) return;
   await db.from('esg_submissions').delete().eq('id', id);
@@ -1022,6 +1429,16 @@ async function handlePasteData() {
 // Start
 init();
 </script>
+<div id="isoModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center" onclick="if(event.target===this)closeIsoModal()">
+  <div style="background:var(--surface);border-radius:var(--r);padding:24px;max-width:520px;width:90%;max-height:85vh;overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,0.2)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div id="isoModalTitle" style="font-size:16px;font-weight:700;color:var(--t1)">🏆 인증서</div>
+      <button style="background:none;border:none;font-size:24px;cursor:pointer;color:var(--t3);padding:0" onclick="closeIsoModal()">✕</button>
+    </div>
+    <div id="isoModalBody"></div>
+  </div>
+</div>
+
 <div id="detailModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center" onclick="if(event.target===this)closeDetailModal()">
   <div style="background:var(--surface);border-radius:var(--r);padding:24px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,0.2)">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
