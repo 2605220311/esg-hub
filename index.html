@@ -1691,3 +1691,174 @@ init();
 </div>
 
 
+
+
+<script>
+function renderTimeline(data) {
+  const container = document.getElementById('timeline-chart');
+  container.innerHTML = '';
+
+  // 1. 인증서 데이터만 필터링 및 날짜 유효성 검사
+  const certData = data.filter(item => {
+    if (!item.issue_date || !item.expiry_date) return false;
+    const start = new Date(item.issue_date);
+    const end = new Date(item.expiry_date);
+    return !isNaN(start) && !isNaN(end) && end >= start;
+  });
+
+  if (certData.length === 0) {
+    container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--t3);">표시할 인증서 타임라인 데이터가 없습니다.</div>';
+    return;
+  }
+
+  // 2. 전체 데이터의 최소/최대 날짜 구하기 (타임라인 가로축 범위 설정)
+  let globalMin = null;
+  let globalMax = null;
+
+  certData.forEach(item => {
+    const s = new Date(item.issue_date);
+    const e = new Date(item.expiry_date);
+    if (!globalMin || s < globalMin) globalMin = s;
+    if (!globalMax || e > globalMax) globalMax = e;
+  });
+
+  // 좌우 여유 버퍼 주기 (6개월씩)
+  globalMin = new Date(globalMin.getFullYear(), globalMin.getMonth() - 6, 1);
+  globalMax = new Date(globalMax.getFullYear(), globalMax.getMonth() + 6, 1);
+  const totalDuration = globalMax - globalMin;
+
+  // 3. [핵심 수정] 문서 제목(document_title) 기준으로 데이터 그룹화하기
+  const uniqueTitles = [...new Set(certData.map(item => item.document_title))];
+
+  // 4. 연도 라벨 레이어 생성 (가로축 헤더)
+  const timelineHeader = document.createElement('div');
+  timelineHeader.className = 'timeline-header';
+  timelineHeader.style.position = 'relative';
+  timelineHeader.style.height = '30px';
+  timelineHeader.style.borderBottom = '1px solid var(--border)';
+  timelineHeader.style.marginBottom = '10px';
+
+  const startYear = globalMin.getFullYear();
+  const endYear = globalMax.getFullYear();
+  for (let y = startYear; y <= endYear; y++) {
+    const yearDate = new Date(y, 0, 1);
+    if (yearDate >= globalMin && yearDate <= globalMax) {
+      const leftPercent = ((yearDate - globalMin) / totalDuration) * 100;
+      const yearLabel = document.createElement('div');
+      yearLabel.className = 'timeline-year-label';
+      yearLabel.innerText = y + '년';
+      yearLabel.style.position = 'absolute';
+      yearLabel.style.left = `calc(${leftPercent}% + 160px)`; // 라벨 영역(160px) 고려
+      yearLabel.style.fontSize = '12px';
+      yearLabel.style.color = 'var(--t3)';
+      yearLabel.style.borderLeft = '1px dashed var(--border)';
+      yearLabel.style.height = '500px'; // 배경 점선 연장
+      yearLabel.style.paddingLeft = '4px';
+      yearLabel.style.zIndex = '0';
+      timelineHeader.appendChild(yearLabel);
+    }
+  }
+  container.appendChild(timelineHeader);
+
+  // 5. 그룹화된 행별로 타임라인 그리기
+  uniqueTitles.forEach(title => {
+    // 현재 제목과 일치하는 모든 기간 데이터 가져오기
+    const itemsInRow = certData.filter(item => item.document_title === title);
+    
+    // 행(Row) 컨테이너 생성
+    const rowEl = document.createElement('div');
+    rowEl.className = 'timeline-row';
+    rowEl.style.display = 'flex';
+    rowEl.style.alignItems = 'center';
+    rowEl.style.position = 'relative';
+    rowEl.style.marginBottom = '12px';
+    rowEl.style.minHeight = '32px';
+    rowEl.style.zIndex = '1';
+
+    // 왼쪽 고정: 인증서 이름 영역 (한 번만 표시)
+    const labelEl = document.createElement('div');
+    labelEl.className = 'timeline-label';
+    labelEl.innerText = title;
+    labelEl.title = title;
+    labelEl.style.width = '150px';
+    labelEl.style.minWidth = '150px';
+    labelEl.style.fontSize = '12px';
+    labelEl.style.fontWeight = '600';
+    labelEl.style.color = 'var(--t1)';
+    labelEl.style.whiteSpace = 'nowrap';
+    labelEl.style.overflow = 'hidden';
+    labelEl.style.textOverflow = 'ellipsis';
+    labelEl.style.marginRight = '10px';
+    rowEl.appendChild(labelEl);
+
+    // 오른쪽: 타임라인 바들이 그려질 가로축 영역
+    const barAreaEl = document.createElement('div');
+    barAreaEl.className = 'timeline-bar-area';
+    barAreaEl.style.position = 'relative';
+    barAreaEl.style.flexGrow = '1';
+    barAreaEl.style.height = '24px';
+
+    // 같은 행 안에 여러 개의 기간 바(Bar)를 배치
+    itemsInRow.forEach(item => {
+      const s = new Date(item.issue_date);
+      const e = new Date(item.expiry_date);
+
+      const leftPercent = ((s - globalMin) / totalDuration) * 100;
+      const widthPercent = ((e - s) / totalDuration) * 100;
+
+      const barEl = document.createElement('div');
+      barEl.className = 'timeline-bar';
+      
+      // 그룹사별 색상 구별 (기존 로직 유지)
+      let barBg = 'var(--p1)';
+      if (item.group_company.includes('홀딩스')) barBg = '#4f46e5';
+      else if (item.group_company.includes('제약')) barBg = '#059669';
+      else if (item.group_company.includes('ST')) barBg = '#dc2626';
+
+      barEl.style.position = 'absolute';
+      barEl.style.left = `${leftPercent}%`;
+      barEl.style.width = `${widthPercent}%`;
+      barEl.style.height = '100%';
+      barEl.style.backgroundColor = barBg;
+      barEl.style.borderRadius = '4px';
+      barEl.style.opacity = '0.85';
+      barEl.style.cursor = 'pointer';
+      barEl.style.display = 'flex';
+      barEl.style.alignItems = 'center';
+      barEl.style.padding = '0 8px';
+      barEl.style.boxSizing = 'border-box';
+      barEl.style.transition = 'transform 0.2s, opacity 0.2s';
+
+      // 바 내부에 회사명 및 기간 텍스트 노출
+      const textEl = document.createElement('span');
+      textEl.style.fontSize = '10px';
+      textEl.style.color = '#fff';
+      textEl.style.whiteSpace = 'nowrap';
+      textEl.style.overflow = 'hidden';
+      textEl.style.textOverflow = 'ellipsis';
+      textEl.innerText = `[${item.group_company}] ${item.issue_date} ~ ${item.expiry_date}`;
+      barEl.appendChild(textEl);
+
+      // 마우스 오버 효과
+      barEl.onmouseenter = () => {
+        barEl.style.transform = 'scaleY(1.1)';
+        barEl.style.opacity = '1';
+      };
+      barEl.onmouseleave = () => {
+        barEl.style.transform = 'scaleY(1)';
+        barEl.style.opacity = '0.85';
+      };
+
+      // 클릭 시 상세 팝업 열기 (기존 기능 유지)
+      barEl.onclick = () => {
+        showDetailModal(item);
+      };
+
+      barAreaEl.appendChild(barEl);
+    });
+
+    rowEl.appendChild(barAreaEl);
+    container.appendChild(rowEl);
+  });
+}
+</script>
