@@ -217,8 +217,8 @@ const COMPANIES = [
 
 /* ESG 분류 및 세부 항목 */
 const ESG = {
-  '인권경영': ['인권&노동', '안전보건', '기타'],
-  '환경경영': ['에너지', '폐기물', '물', '환경오염(대기, 소음)', '생물다양성', '인증서', '기타'],
+  '인권경영': ['인권&노동', '안전보건', '인증서', '기타'],
+  '환경경영': ['공통', '에너지', '폐기물', '물', '환경오염(대기, 소음)', '생물다양성', '인증서', '기타'],
   '준법경영': ['준법', '윤리', '반부패', '인증서', '기타'],
   '소비자중심경영': ['품질', '정보보호', '인증서', '기타'],
   'CSR': ['건강', '사람', '환경', '지역사회', '기타'],
@@ -248,10 +248,30 @@ function init() {
 }
 
 async function load() {
-  if (ready) {
-    const { data } = await db.from('esg_submissions').select('*').order('created_at', { ascending: false });
-    if (data) rows = data;
+  if (!ready) { render(); return; }
+
+  let data = null;
+
+  // 1순위: display_order 기준 정렬 시도
+  try {
+    const res = await db.from('esg_submissions').select('*')
+      .order('display_order', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: false });
+    if (!res.error && res.data) data = res.data;
+  } catch (_) { /* 조용히 fallback */ }
+
+  // 2순위: 실패 시 created_at만으로 정렬
+  if (!data) {
+    try {
+      const res = await db.from('esg_submissions').select('*')
+        .order('created_at', { ascending: false });
+      if (!res.error && res.data) data = res.data;
+    } catch (e) {
+      console.error('데이터 로드 실패:', e);
+    }
   }
+
+  if (data) rows = data;
   render();
 }
 
@@ -344,6 +364,24 @@ function rSubmit() {
     <div class="card" style="font-size:12px;color:var(--t2);line-height:2">
       <div style="font-weight:600;color:var(--t1);margin-bottom:6px">📋 제출 안내</div>
       제출 후 수정이 필요한 경우 정도경영팀으로 연락해 주세요.
+    </div>
+    <div class="card anim">
+      <div class="card-title">🗂 정도경영 분류 안내</div>
+      <div style="display:flex;flex-direction:column">
+        ${CATS.map((cat, i) => `
+          <div style="display:flex;gap:14px;align-items:flex-start;padding:12px 0;${i < CATS.length - 1 ? 'border-bottom:1px solid var(--border-l)' : ''}">
+            <div style="min-width:130px;flex-shrink:0">
+              <span class="badge bg" style="font-size:12px;padding:4px 10px">${cat}</span>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;flex:1;padding-top:2px">
+              ${ESG[cat].map(s => `<span class="chip">${s}</span>`).join('')}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      <div style="margin-top:14px;padding:10px 12px;background:var(--bg);border-radius:var(--rs);font-size:11px;color:var(--t2);line-height:1.6">
+        💡 적합한 분류가 명확하지 않은 경우 <strong>'기타'</strong> 항목을 선택하시거나, 정도경영팀으로 문의해 주세요.
+      </div>
     </div>`;
 }
 
@@ -580,7 +618,7 @@ function rAdmin() {
 
   const dataHTML = filtered.length === 0
     ? `<div class="empty"><div class="eico">📭</div>해당하는 문서가 없습니다</div>`
-    : filtered.map(r => `
+    : filtered.map((r, idx) => `
         <div class="drow">
           <div class="dmeta">
             <div class="dhead">
@@ -595,6 +633,10 @@ function rAdmin() {
             ${r.description ? `<div class="ddesc">${r.description}</div>` : ''}
           </div>
           <div class="ddate">${fd(r.created_at)}</div>
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <button class="btn-del" onclick="moveRow('${r.id}',-1)" title="위로 이동" ${idx===0?'disabled style="opacity:0.25;cursor:not-allowed;font-size:13px;line-height:1"':'style="font-size:13px;line-height:1"'}>▲</button>
+            <button class="btn-del" onclick="moveRow('${r.id}',1)" title="아래로 이동" ${idx===filtered.length-1?'disabled style="opacity:0.25;cursor:not-allowed;font-size:13px;line-height:1"':'style="font-size:13px;line-height:1"'}>▼</button>
+          </div>
           <div style="display:flex;gap:4px">
             <button class="btn-del" onclick="showEditModal('${r.id}')" title="수정" style="background:var(--primary);color:white">✎</button>
             <button class="btn-del" onclick="del('${r.id}')" title="삭제">✕</button>
@@ -616,6 +658,9 @@ function rAdmin() {
     </div>
     <div class="card anim">
       <div class="card-title">📁 전체 제출 문서 <span style="font-size:12px;font-weight:400;color:var(--t3)">${rows.length}건 · 링크 포함 전체 열람</span></div>
+      <div style="font-size:11px;color:var(--t2);background:var(--bg);padding:8px 12px;border-radius:var(--rs);margin-bottom:12px">
+        💡 각 행의 <strong>▲▼</strong> 버튼으로 표시 순서를 변경할 수 있습니다 (전체 사용자에게 반영됨)
+      </div>
       <div class="filters">${catBtns}</div>
       <div class="filters" style="margin-bottom:14px">${coBtns}</div>
       ${dataHTML}
@@ -643,6 +688,65 @@ function setFCo(c) { fCo  = c; rAdmin(); }
 async function del(id) {
   if (!confirm('이 항목을 삭제하시겠습니까?')) return;
   await db.from('esg_submissions').delete().eq('id', id);
+  await load(); rAdmin();
+}
+
+// 행 순서 변경 (▲ direction=-1, ▼ direction=+1)
+async function moveRow(id, direction) {
+  if (!db) return;
+
+  // 현재 admin 필터(분류·그룹사)와 동일한 조건으로 필터링한 목록 기준으로 이동
+  const filtered = rows.filter(r =>
+    (fCat === '전체' || r.esg_category === fCat) &&
+    (fCo === '전체' || r.company === fCo)
+  );
+  const idx = filtered.findIndex(r => r.id === id);
+  if (idx === -1) return;
+  const targetIdx = idx + direction;
+  if (targetIdx < 0 || targetIdx >= filtered.length) return;
+
+  // 한 행이라도 display_order가 NULL이면 전체 행을 현재 표시 순서대로 초기화
+  const anyNull = rows.some(r => r.display_order == null);
+  if (anyNull) {
+    const initBtn = event && event.target;
+    if (initBtn) { initBtn.disabled = true; initBtn.textContent = '⋯'; }
+    try {
+      await Promise.all(rows.map((r, i) => {
+        if (r.display_order == null || r.display_order !== i + 1) {
+          return db.from('esg_submissions').update({ display_order: i + 1 }).eq('id', r.id);
+        }
+        return null;
+      }).filter(Boolean));
+    } catch (e) {
+      alert('순서 초기화 실패: display_order 컬럼이 DB에 있는지 확인해주세요.\n' + e.message);
+      return;
+    }
+    await load();
+  }
+
+  // 다시 필터된 목록에서 두 행을 가져와 display_order 값을 교환
+  const filtered2 = rows.filter(r =>
+    (fCat === '전체' || r.esg_category === fCat) &&
+    (fCo === '전체' || r.company === fCo)
+  );
+  const idx2 = filtered2.findIndex(r => r.id === id);
+  const targetIdx2 = idx2 + direction;
+  if (idx2 === -1 || targetIdx2 < 0 || targetIdx2 >= filtered2.length) { rAdmin(); return; }
+
+  const a = filtered2[idx2];
+  const b = filtered2[targetIdx2];
+
+  const { error } = await (async () => {
+    const r1 = await db.from('esg_submissions').update({ display_order: b.display_order }).eq('id', a.id);
+    const r2 = await db.from('esg_submissions').update({ display_order: a.display_order }).eq('id', b.id);
+    return r1.error ? r1 : r2;
+  })();
+
+  if (error) {
+    alert('순서 변경 실패: ' + error.message);
+    return;
+  }
+
   await load(); rAdmin();
 }
 
