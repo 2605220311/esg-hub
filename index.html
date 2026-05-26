@@ -775,7 +775,7 @@ function getAllCerts() {
       cert_name: r.title || '(제목 없음)',
       issue_date: r.issue_date,
       expiry_date: r.expiry_date,
-      status: 'active',         // 문서는 항상 활성으로 간주 (만료는 날짜로 자동 판별)
+      status: r.status || 'active',         // status 컬럼 있으면 사용, 없으면 active
       notes: r.description,
       esg_category: r.esg_category,
       year: r.year,
@@ -946,7 +946,10 @@ function rIso() {
                   </div>
                   ${c.notes ? `<div style="font-size:11px;color:var(--t3);margin-top:6px;padding-top:6px;border-top:1px dashed var(--border-l)">📝 ${c.notes}</div>` : ''}
                 </div>
-                <div style="display:flex;gap:4px;flex-shrink:0">
+                <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;align-items:flex-start;justify-content:flex-end">
+                  ${(st === 'expired' || st === 'discontinued')
+                    ? `<button onclick="toggleCertStatus('${c.id}')" title="${st==='expired'?'중단 카테고리로 이동':'만료 카테고리로 복원'}" style="padding:6px 10px;border:none;border-radius:var(--rs);cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap;background:${st==='expired'?'#6E6B66':'#A0331E'};color:white">${st==='expired'?'🛑 중단으로':'↻ 만료로'}</button>`
+                    : ''}
                   ${isDoc
                     ? `<a href="${c._docLink}" target="_blank" rel="noopener" class="btn-del" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;background:var(--bg)" title="원본 문서 링크 열기">🔗</a>
                        <button class="btn-del" onclick="alert('📄 문서 제출로 등록된 항목입니다.\\n수정/삭제는 관리자 페이지에서 해당 문서를 편집해주세요.')" title="문서로 등록된 항목 — 관리자 페이지에서 수정" style="opacity:0.4;cursor:help">📄</button>`
@@ -1167,6 +1170,52 @@ async function deleteIso(id) {
   if (!confirm('이 인증서 항목을 삭제하시겠습니까?')) return;
   const { error } = await db.from('iso_certificates').delete().eq('id', id);
   if (error) { alert('삭제 실패: ' + error.message); return; }
+  await load();
+  rIso();
+}
+
+// 인증서 상태 토글: '만료' ↔ '중단'
+// 만료된 인증서는 status='discontinued'로, 중단된 인증서는 status='active'로 변경
+// (status='active'이고 expiry_date가 과거면 자동으로 '만료'로 분류됨)
+async function toggleCertStatus(id) {
+  const allCerts = getAllCerts();
+  const cert = allCerts.find(c => c.id === id);
+  if (!cert) return;
+
+  const currentSt = isoStatus(cert);
+  if (currentSt !== 'expired' && currentSt !== 'discontinued') {
+    alert('이 작업은 만료 또는 중단 상태의 인증서에만 사용할 수 있습니다.');
+    return;
+  }
+
+  const newStatus = currentSt === 'expired' ? 'discontinued' : 'active';
+  const actionLabel = newStatus === 'discontinued' ? '중단' : '만료';
+
+  if (!confirm(`다음 인증서를 '${actionLabel}' 카테고리로 이동하시겠습니까?\n\n${cert.company} · ${cert.cert_name}`)) return;
+
+  const isDoc = cert._source === 'doc';
+  const table = isDoc ? 'esg_submissions' : 'iso_certificates';
+  const realId = isDoc ? cert._docId : cert.id;
+
+  const { data, error } = await db.from(table).update({ status: newStatus }).eq('id', realId).select();
+
+  if (error) {
+    if (error.message && error.message.toLowerCase().includes('status')) {
+      alert(
+        '⚠ ' + table + ' 테이블에 status 컬럼이 없습니다.\n\n' +
+        'Supabase SQL Editor에서 다음을 실행해주세요:\n\n' +
+        'ALTER TABLE ' + table + ' ADD COLUMN IF NOT EXISTS status TEXT DEFAULT \'active\';'
+      );
+    } else {
+      alert('상태 변경 실패: ' + error.message);
+    }
+    return;
+  }
+  if (!data || data.length === 0) {
+    alert('⚠ 상태 변경이 적용되지 않았습니다 (RLS 정책 점검 필요)');
+    return;
+  }
+
   await load();
   rIso();
 }
