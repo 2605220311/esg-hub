@@ -748,6 +748,19 @@ function setFCo(c) { fCo  = c; rAdmin(); }
 
 // ── ISO 인증서 관리 ───────────────────────────────────────────────
 let isoEditId = null;  // null이면 신규 추가, id가 있으면 편집
+let isoFilter = 'all'; // 'all' / 'active' / 'expiring' / 'expired' / 'discontinued'
+let ganttCompanyFilter = '전체'; // 타임라인 전용 그룹사 필터
+
+function setIsoFilter(status) {
+  // 같은 필터를 다시 누르면 해제 (전체는 항상 전체로)
+  isoFilter = (status === 'all' || isoFilter === status) ? 'all' : status;
+  rIso();
+}
+
+function setGanttCompanyFilter(co) {
+  ganttCompanyFilter = co;
+  rIso();
+}
 
 // 두 데이터 소스 통합: iso_certificates 테이블 + esg_submissions의 '인증서' 세부항목
 function getAllCerts() {
@@ -801,43 +814,62 @@ function rIso() {
   const expired = allCerts.filter(c => isoStatus(c) === 'expired').length;
   const discontinued = allCerts.filter(c => isoStatus(c) === 'discontinued').length;
 
-  // 매트릭스용: 등장하는 모든 cert_name
-  const allCertNames = [...new Set(allCerts.map(c => c.cert_name))].sort();
+  // 필터 적용 (요약 카운트는 항상 전체 기준이지만, 아래 3개 섹션은 필터링됨)
+  const filteredCerts = isoFilter === 'all'
+    ? allCerts
+    : allCerts.filter(c => isoStatus(c) === isoFilter);
+
+  // 매트릭스용: 필터된 데이터에 등장하는 모든 cert_name
+  const allCertNames = [...new Set(filteredCerts.map(c => c.cert_name))].sort();
+
+  // 카드 스타일 헬퍼 (활성 필터는 강조)
+  const cardStyle = (status, baseColor, baseFg) => {
+    const isActive = isoFilter === status;
+    return `padding:12px;background:${baseColor};border-radius:var(--rs);text-align:center;cursor:pointer;transition:all 0.15s;${isActive?`box-shadow:0 0 0 2px ${baseFg};transform:translateY(-1px)`:'opacity:0.85'}`;
+  };
+
+  // 필터 상태 라벨
+  const filterLabels = { all: '', active: '진행 중', expiring: '만료 임박', expired: '만료', discontinued: '중단' };
 
   document.getElementById('view-iso').innerHTML = `
     <div class="card anim">
       <div class="card-title">🏆 인증서 관리</div>
       <div style="font-size:11px;color:var(--t2);background:var(--bg);padding:8px 12px;border-radius:var(--rs);margin-bottom:12px">
-        💡 문서 제출 시 세부항목을 <strong>'인증서'</strong>로 선택하면 자동으로 이 탭에 표시됩니다. 직접 추가도 가능합니다.
+        💡 문서 제출 시 세부항목을 <strong>'인증서'</strong>로 선택하면 자동으로 이 탭에 표시됩니다. 직접 추가도 가능합니다.<br>
+        💡 아래 요약 카드를 <strong>클릭</strong>하면 그룹사별 인증 현황·타임라인·목록이 해당 상태로 필터링됩니다.
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:6px">
-        <div style="padding:12px;background:var(--bg);border-radius:var(--rs);text-align:center">
-          <div style="font-size:11px;color:var(--t3);margin-bottom:2px">전체</div>
+        <div onclick="setIsoFilter('all')" style="${cardStyle('all', 'var(--bg)', 'var(--t1)')}">
+          <div style="font-size:11px;color:var(--t3);margin-bottom:2px">${isoFilter==='all'?'✓ ':''}전체</div>
           <div style="font-size:20px;font-weight:700;color:var(--t1)">${total}</div>
         </div>
-        <div style="padding:12px;background:#E8F0DC;border-radius:var(--rs);text-align:center">
-          <div style="font-size:11px;color:#4A7818;margin-bottom:2px">진행 중</div>
+        <div onclick="setIsoFilter('active')" style="${cardStyle('active', '#E8F0DC', '#4A7818')}">
+          <div style="font-size:11px;color:#4A7818;margin-bottom:2px">${isoFilter==='active'?'✓ ':''}진행 중</div>
           <div style="font-size:20px;font-weight:700;color:#4A7818">${active}</div>
         </div>
-        <div style="padding:12px;background:#FFF4D6;border-radius:var(--rs);text-align:center">
-          <div style="font-size:11px;color:#B07000;margin-bottom:2px">만료 임박</div>
+        <div onclick="setIsoFilter('expiring')" style="${cardStyle('expiring', '#FFF4D6', '#B07000')}">
+          <div style="font-size:11px;color:#B07000;margin-bottom:2px">${isoFilter==='expiring'?'✓ ':''}만료 임박</div>
           <div style="font-size:20px;font-weight:700;color:#B07000">${expiring}</div>
         </div>
-        <div style="padding:12px;background:#FDE4E0;border-radius:var(--rs);text-align:center">
-          <div style="font-size:11px;color:#A0331E;margin-bottom:2px">만료</div>
+        <div onclick="setIsoFilter('expired')" style="${cardStyle('expired', '#FDE4E0', '#A0331E')}">
+          <div style="font-size:11px;color:#A0331E;margin-bottom:2px">${isoFilter==='expired'?'✓ ':''}만료</div>
           <div style="font-size:20px;font-weight:700;color:#A0331E">${expired}</div>
         </div>
-        <div style="padding:12px;background:#EDEAE3;border-radius:var(--rs);text-align:center">
-          <div style="font-size:11px;color:#6E6B66;margin-bottom:2px">중단</div>
+        <div onclick="setIsoFilter('discontinued')" style="${cardStyle('discontinued', '#EDEAE3', '#6E6B66')}">
+          <div style="font-size:11px;color:#6E6B66;margin-bottom:2px">${isoFilter==='discontinued'?'✓ ':''}중단</div>
           <div style="font-size:20px;font-weight:700;color:#6E6B66">${discontinued}</div>
         </div>
       </div>
+      ${isoFilter !== 'all' ? `<div style="margin-top:10px;padding:8px 12px;background:#FFF9E6;border:1px solid #E8C97A;border-radius:var(--rs);font-size:12px;color:#7A5A0E;display:flex;justify-content:space-between;align-items:center">
+        <span>🔍 <strong>${filterLabels[isoFilter]}</strong> 상태의 인증서만 표시 중 (${filteredCerts.length}건)</span>
+        <button onclick="setIsoFilter('all')" style="background:none;border:1px solid #C19F4F;color:#7A5A0E;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">전체 보기</button>
+      </div>` : ''}
     </div>
 
     <div class="card anim">
-      <div class="card-title">📋 그룹사별 인증 현황</div>
+      <div class="card-title">📋 그룹사별 인증 현황${isoFilter!=='all'?` <span style="font-size:11px;font-weight:400;color:var(--t3)">· ${filterLabels[isoFilter]}만 표시</span>`:''}</div>
       ${allCertNames.length === 0
-        ? `<div class="empty"><div class="eico">📭</div>등록된 인증서가 없습니다</div>`
+        ? `<div class="empty"><div class="eico">📭</div>${isoFilter==='all'?'등록된 인증서가 없습니다':`${filterLabels[isoFilter]} 상태인 인증서가 없습니다`}</div>`
         : `<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:12px">
             <thead>
               <tr style="background:var(--bg)">
@@ -847,7 +879,7 @@ function rIso() {
             </thead>
             <tbody>
               ${COMPANIES.map(co => {
-                const coCerts = allCerts.filter(c => c.company === co);
+                const coCerts = filteredCerts.filter(c => c.company === co);
                 if (coCerts.length === 0) return '';
                 return `<tr>
                   <td style="padding:8px 10px;border:1px solid var(--border);font-weight:600;background:var(--surface);position:sticky;left:0">${co}</td>
@@ -869,22 +901,30 @@ function rIso() {
     </div>
 
     <div class="card anim">
-      <div class="card-title">📅 인증 타임라인 <span style="font-size:11px;font-weight:400;color:var(--t3)">· 발행일 ~ 만료일 기준</span></div>
-      ${renderGantt(allCerts)}
+      <div class="card-title">📅 인증 타임라인${isoFilter!=='all'?` <span style="font-size:11px;font-weight:400;color:var(--t3)">· ${filterLabels[isoFilter]}만 표시</span>`:''} <span style="font-size:11px;font-weight:400;color:var(--t3)">· 발행일 ~ 만료일 기준</span></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;background:var(--bg);border-radius:var(--rs)">
+        <label style="font-size:12px;color:var(--t2);font-weight:600">그룹사 필터:</label>
+        <select onchange="setGanttCompanyFilter(this.value)" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit;font-size:12px;background:var(--surface);color:var(--t1);cursor:pointer;min-width:140px">
+          <option value="전체" ${ganttCompanyFilter==='전체'?'selected':''}>전체</option>
+          ${COMPANIES.map(c => `<option value="${c}" ${ganttCompanyFilter===c?'selected':''}>${c}</option>`).join('')}
+        </select>
+        ${ganttCompanyFilter !== '전체' ? `<span style="font-size:11px;color:var(--t3)">· <strong style="color:var(--t1)">${ganttCompanyFilter}</strong>의 인증서만 표시</span>` : ''}
+      </div>
+      ${renderGantt(filteredCerts.filter(c => ganttCompanyFilter === '전체' || c.company === ganttCompanyFilter))}
     </div>
 
     <div class="card anim">
-      <div class="card-title">📝 인증서 목록 <span style="font-size:12px;font-weight:400;color:var(--t3)">${allCerts.length}건 · 📄 문서 ${allCerts.filter(c=>c._source==='doc').length}건 · 직접 등록 ${isoData.length}건</span></div>
+      <div class="card-title">📝 인증서 목록${isoFilter!=='all'?` <span style="font-size:11px;font-weight:400;color:var(--t3)">· ${filterLabels[isoFilter]}만 표시</span>`:''} <span style="font-size:12px;font-weight:400;color:var(--t3)">${filteredCerts.length}건${isoFilter==='all'?` · 📄 문서 ${allCerts.filter(c=>c._source==='doc').length}건 · 직접 등록 ${isoData.length}건`:''}</span></div>
       <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn-sec" onclick="openIsoModal()" style="background:var(--primary);color:white">+ 인증서 직접 추가</button>
       </div>
       <datalist id="iso-suggestions">
         ${ISO_SUGGESTIONS.map(s => `<option value="${s}">`).join('')}
       </datalist>
-      ${allCerts.length === 0
-        ? `<div class="empty"><div class="eico">📭</div>등록된 인증서가 없습니다</div>`
+      ${filteredCerts.length === 0
+        ? `<div class="empty"><div class="eico">📭</div>${isoFilter==='all'?'등록된 인증서가 없습니다':`${filterLabels[isoFilter]} 상태인 인증서가 없습니다`}</div>`
         : `<div style="display:flex;flex-direction:column;gap:8px">
-            ${allCerts.map(c => {
+            ${filteredCerts.map(c => {
               const st = isoStatus(c);
               const meta = ISO_STATUS_LABEL[st];
               const isDoc = c._source === 'doc';
@@ -931,11 +971,11 @@ function renderGantt(allCerts) {
   const maxYear = Math.max(...allDates.map(d => d.getFullYear()), new Date().getFullYear()) + 1;
   const yearSpan = maxYear - minYear;
 
-  // SVG 크기 계산
-  const labelWidth = 200;
+  // SVG 크기 계산 — 라벨 영역을 넉넉히, 행 높이도 두 줄에 맞춰 증가
+  const labelWidth = 320;
   const yearWidth = 80;
-  const rowHeight = 32;
-  const padding = { top: 30, bottom: 10 };
+  const rowHeight = 44;
+  const padding = { top: 32, bottom: 10 };
   const totalWidth = labelWidth + yearWidth * yearSpan + 20;
   const totalHeight = padding.top + certs.length * rowHeight + padding.bottom;
 
@@ -949,10 +989,13 @@ function renderGantt(allCerts) {
   let svg = `<div style="overflow-x:auto;border:1px solid var(--border-l);border-radius:var(--rs);padding:8px;background:var(--surface)">
     <svg viewBox="0 0 ${totalWidth} ${totalHeight}" xmlns="http://www.w3.org/2000/svg" style="min-width:${totalWidth}px;font-family:inherit;font-size:10px">`;
 
+  // 라벨 영역과 차트 영역 구분선
+  svg += `<line x1="${labelWidth - 4}" y1="${padding.top - 12}" x2="${labelWidth - 4}" y2="${totalHeight}" stroke="#D8D4CB" stroke-width="1"/>`;
+
   // 연도 격자선 + 라벨
   for (let y = 0; y <= yearSpan; y++) {
     const x = labelWidth + y * yearWidth;
-    svg += `<line x1="${x}" y1="${padding.top - 10}" x2="${x}" y2="${totalHeight}" stroke="#E2DED6" stroke-width="1"/>`;
+    svg += `<line x1="${x}" y1="${padding.top - 12}" x2="${x}" y2="${totalHeight}" stroke="#E2DED6" stroke-width="1"/>`;
     if (y < yearSpan) {
       svg += `<text x="${x + yearWidth/2}" y="${padding.top - 14}" text-anchor="middle" fill="#6E6B66" font-size="11" font-weight="600">${minYear + y}</text>`;
     }
@@ -977,8 +1020,10 @@ function renderGantt(allCerts) {
       svg += `<rect x="0" y="${y}" width="${totalWidth}" height="${rowHeight}" fill="#F8F6F2" opacity="0.5"/>`;
     }
 
-    // 라벨 (회사 · 인증명)
-    svg += `<text x="${labelWidth - 10}" y="${yMid + 4}" text-anchor="end" fill="#1A1A18" font-size="11" font-weight="600">${c.company} · ${c.cert_name.length > 18 ? c.cert_name.substring(0,18)+'…' : c.cert_name}</text>`;
+    // 라벨 — 두 줄: 위는 그룹사(작고 흐림), 아래는 인증서명(크고 진함)
+    const certDisplay = c.cert_name.length > 30 ? c.cert_name.substring(0, 30) + '…' : c.cert_name;
+    svg += `<text x="${labelWidth - 10}" y="${yMid - 3}" text-anchor="end" fill="#6E6B66" font-size="10" font-weight="500">${c.company}</text>`;
+    svg += `<text x="${labelWidth - 10}" y="${yMid + 11}" text-anchor="end" fill="#1A1A18" font-size="11.5" font-weight="700">${certDisplay}</text>`;
 
     // 바
     if (c.issue_date && c.expiry_date) {
@@ -989,16 +1034,15 @@ function renderGantt(allCerts) {
                     st === 'expired' ? '#C0392B' :
                     st === 'expiring' ? '#C0883B' : '#5C9620';
       const opacity = st === 'discontinued' ? 0.45 : 0.85;
-      svg += `<rect x="${x1}" y="${y + 6}" width="${Math.max(2, x2 - x1)}" height="${rowHeight - 12}" fill="${color}" opacity="${opacity}" rx="3" style="cursor:pointer" onclick="openIsoModal('${c.id}')"><title>${c.company} · ${c.cert_name}
+      svg += `<rect x="${x1}" y="${y + 10}" width="${Math.max(2, x2 - x1)}" height="${rowHeight - 20}" fill="${color}" opacity="${opacity}" rx="3" style="cursor:pointer" onclick="openIsoModal('${c.id}')"><title>${c.company} · ${c.cert_name}
 ${c.issue_date} ~ ${c.expiry_date}
 ${ISO_STATUS_LABEL[st].text}</title></rect>`;
       // 중단 시 X 표시
       if (st === 'discontinued') {
-        svg += `<line x1="${x1}" y1="${y+6}" x2="${x2}" y2="${y+rowHeight-6}" stroke="#A0331E" stroke-width="2"/>`;
-        svg += `<line x1="${x2}" y1="${y+6}" x2="${x1}" y2="${y+rowHeight-6}" stroke="#A0331E" stroke-width="2"/>`;
+        svg += `<line x1="${x1}" y1="${y+10}" x2="${x2}" y2="${y+rowHeight-10}" stroke="#A0331E" stroke-width="2"/>`;
+        svg += `<line x1="${x2}" y1="${y+10}" x2="${x1}" y2="${y+rowHeight-10}" stroke="#A0331E" stroke-width="2"/>`;
       }
     } else if (c.issue_date) {
-      // 발행일만 있고 만료일 없음 — 점으로 표시
       svg += `<circle cx="${dateToX(c.issue_date)}" cy="${yMid}" r="5" fill="#5C9620" opacity="0.8"/>`;
     }
   });
