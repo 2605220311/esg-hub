@@ -248,6 +248,7 @@ let db = null;
 let ready = false;
 let rows = [];
 let isoData = [];
+let selectedIds = new Set();
 let view = 'status';
 let loggedIn = false;
 let pinErr = false;
@@ -667,7 +668,8 @@ function rAdmin() {
   const dataHTML = filtered.length === 0
     ? `<div class="empty"><div class="eico">📭</div>해당하는 문서가 없습니다</div>`
     : filtered.map((r, idx) => `
-        <div class="drow">
+        <div class="drow" style="${selectedIds.has(r.id) ? 'background:#FFF4D6;border-color:#C0883B' : ''}">
+          <input type="checkbox" onchange="toggleSelect('${r.id}')" ${selectedIds.has(r.id) ? 'checked' : ''} style="margin-top:6px;width:16px;height:16px;cursor:pointer;flex-shrink:0">
           <div class="dmeta">
             <div class="dhead">
               <span class="badge ${bc(r.esg_category)}">${r.esg_category}</span>
@@ -712,6 +714,16 @@ function rAdmin() {
       </div>
       <div class="filters">${catBtns}</div>
       <div class="filters" style="margin-bottom:14px">${coBtns}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;background:var(--bg);border-radius:var(--rs);margin-bottom:12px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--t1);cursor:pointer;user-select:none">
+          <input type="checkbox" onchange="toggleSelectAll()" ${filtered.length > 0 && filtered.every(r => selectedIds.has(r.id)) ? 'checked' : ''} style="width:16px;height:16px;cursor:pointer">
+          <span>현재 필터 ${filtered.length}건 전체 선택</span>
+        </label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn-sec" onclick="bulkDelete()" ${selectedIds.size === 0 ? 'disabled style="opacity:0.4;cursor:not-allowed"' : 'style="background:#C0392B;color:white"'}>🗑 선택 삭제${selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}</button>
+          <button class="btn-sec" onclick="deleteAll()" style="background:#8B1A1A;color:white">⚠ 전체 삭제</button>
+        </div>
+      </div>
       ${dataHTML}
     </div>
     <div class="card anim">
@@ -1118,7 +1130,65 @@ async function deleteIso(id) {
 async function del(id) {
   if (!confirm('이 항목을 삭제하시겠습니까?')) return;
   await db.from('esg_submissions').delete().eq('id', id);
+  selectedIds.delete(id);
   await load(); rAdmin();
+}
+
+// ── 다중 선택 & 일괄 삭제 ──────────────────────────────────────────
+function toggleSelect(id) {
+  if (selectedIds.has(id)) selectedIds.delete(id);
+  else selectedIds.add(id);
+  rAdmin();
+}
+
+function toggleSelectAll() {
+  const filtered = rows.filter(r =>
+    (fCat === '전체' || r.esg_category === fCat) &&
+    (fCo === '전체' || r.company === fCo)
+  );
+  const allSelected = filtered.length > 0 && filtered.every(r => selectedIds.has(r.id));
+  if (allSelected) {
+    filtered.forEach(r => selectedIds.delete(r.id));
+  } else {
+    filtered.forEach(r => selectedIds.add(r.id));
+  }
+  rAdmin();
+}
+
+async function bulkDelete() {
+  if (selectedIds.size === 0) { alert('삭제할 항목을 먼저 선택해주세요.'); return; }
+  if (!confirm(`선택한 ${selectedIds.size}개 항목을 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`)) return;
+
+  const ids = Array.from(selectedIds);
+  const { error } = await db.from('esg_submissions').delete().in('id', ids);
+  if (error) { alert('삭제 실패: ' + error.message); return; }
+
+  selectedIds.clear();
+  await load(); rAdmin();
+  alert(`${ids.length}개 항목이 삭제되었습니다.`);
+}
+
+async function deleteAll() {
+  if (rows.length === 0) { alert('삭제할 항목이 없습니다.'); return; }
+
+  // 1차 확인
+  if (!confirm(`⚠ 정말 전체 ${rows.length}개 항목을 모두 삭제하시겠습니까?\n\n이 작업은 절대 되돌릴 수 없으며,\n모든 그룹사의 데이터가 사라집니다.`)) return;
+
+  // 2차 확인 (텍스트 입력)
+  const confirmText = prompt('실수를 방지하기 위해 아래 문구를 정확히 입력해주세요:\n\n전체 삭제');
+  if (confirmText !== '전체 삭제') {
+    alert('입력값이 일치하지 않아 취소되었습니다.');
+    return;
+  }
+
+  // Supabase는 delete에 필터가 필수 — 모든 행을 대상으로 삭제
+  const { error } = await db.from('esg_submissions').delete()
+    .neq('id', '00000000-0000-0000-0000-000000000000');
+  if (error) { alert('전체 삭제 실패: ' + error.message); return; }
+
+  selectedIds.clear();
+  await load(); rAdmin();
+  alert('전체 데이터가 삭제되었습니다.');
 }
 
 // 행 순서 변경 (▲ direction=-1, ▼ direction=+1)
@@ -1387,40 +1457,61 @@ function closePasteModal() {
 async function handlePasteData() {
   const text = document.getElementById('pasteText').value.trim();
   if (!text) { alert('데이터를 붙여넣어주세요'); return; }
-  
+
   const lines = text.split('\n').filter(l => l.trim());
   if (lines.length < 1) { alert('최소 1행의 데이터가 필요합니다'); return; }
-  
+
   let uploaded = 0;
   let errors = [];
-  
+
   for (let i = 0; i < lines.length; i++) {
-    const [co, cat, sub, title, year, link, submitter] = lines[i].split('\t');
-    
-    if (!co || !cat || !sub || !link) {
-      errors.push(`${i+1}행: 그룹사, 정도경영 분류, 세부항목, 문서링크는 필수`);
+    const cols = lines[i].split('\t').map(c => c.trim());
+
+    let co, cat, sub, title, year, issueDate, expiryDate, link, submitter;
+
+    if (cols.length === 9) {
+      // 새 포맷: 그룹사 / 분류 / 세부 / 제목 / 연도 / 발행일 / 만료일 / 링크 / 제출자
+      [co, cat, sub, title, year, issueDate, expiryDate, link, submitter] = cols;
+    } else if (cols.length === 7) {
+      // 구 포맷 호환: 그룹사 / 분류 / 세부 / 제목 / 연도 / 링크 / 제출자 (날짜 없음)
+      [co, cat, sub, title, year, link, submitter] = cols;
+      issueDate = ''; expiryDate = '';
+    } else {
+      errors.push(`${i+1}행: 컬럼 수가 7 또는 9개여야 합니다 (현재 ${cols.length}개)`);
       continue;
     }
-    
-    const { error } = await db.from('esg_submissions').insert({
-      company: co.trim(),
-      esg_category: cat.trim(),
-      sub_category: sub.trim(),
-      title: title ? title.trim() : '',
-      year: year ? parseInt(year.trim()) : null,
-      link: link.trim(),
-      submitter_name: submitter ? submitter.trim() : '',
-      description: ''
-    });
-    
+
+    if (!co || !cat || !sub || !link) {
+      errors.push(`${i+1}행: 그룹사·분류·세부항목·문서링크는 필수`);
+      continue;
+    }
+
+    // 날짜는 빈 값이면 null로 (인증서가 아닌 행은 자연스럽게 비워둘 수 있음)
+    const validDate = d => (d && /^\d{4}-\d{1,2}-\d{1,2}$/.test(d)) ? d : null;
+
+    const payload = {
+      company: co,
+      esg_category: cat,
+      sub_category: sub,
+      title: title || '',
+      year: year ? parseInt(year) : null,
+      link,
+      submitter_name: submitter || '',
+      description: '',
+      issue_date: validDate(issueDate),
+      expiry_date: validDate(expiryDate),
+    };
+
+    const { error } = await db.from('esg_submissions').insert(payload);
+
     if (!error) uploaded++;
-    else errors.push(`${i+1}행: 저장 실패`);
+    else errors.push(`${i+1}행: ${error.message}`);
   }
-  
+
   let msg = `✅ ${uploaded}개 문서 저장 완료!`;
-  if (errors.length > 0) msg += `\n❌ 오류: ${errors.join('\n')}`;
+  if (errors.length > 0) msg += `\n\n⚠ 오류 (${errors.length}건):\n${errors.slice(0,10).join('\n')}${errors.length>10?`\n... 외 ${errors.length-10}건`:''}`;
   alert(msg);
-  
+
   closePasteModal();
   await load();
   rAdmin();
@@ -1465,11 +1556,13 @@ init();
       <div style="font-size:16px;font-weight:700;color:var(--t1)">📋 Excel 데이터 붙여넣기</div>
       <button style="background:none;border:none;font-size:24px;cursor:pointer;color:var(--t3);padding:0" onclick="closePasteModal()">✕</button>
     </div>
-    <div style="margin-bottom:16px;padding:12px;background:var(--bg);border-radius:var(--rs);font-size:12px;color:var(--t2)">
-      💡 Excel에서 데이터 범위를 선택해서 복사한 후 아래에 붙여넣으세요<br>
-      (헤더 제외, 데이터만)
+    <div style="margin-bottom:16px;padding:12px;background:var(--bg);border-radius:var(--rs);font-size:12px;color:var(--t2);line-height:1.7">
+      💡 Excel에서 데이터 범위를 선택해 복사한 뒤 아래에 붙여넣으세요 <strong>(헤더 제외, 데이터만)</strong><br>
+      <strong style="color:var(--t1)">컬럼 순서 (탭으로 구분, 총 9개):</strong><br>
+      그룹사 → 분류 → 세부항목 → 문서제목 → 작성연도 → <strong>인증서 발행일</strong> → <strong>인증서 만료일</strong> → 문서링크 → 제출자<br>
+      <span style="color:var(--t3)">※ 인증서가 아닌 문서는 발행일·만료일 칸을 비워두세요 (탭만 입력). 날짜 형식: YYYY-MM-DD</span>
     </div>
-    <textarea id="pasteText" placeholder="Excel에서 복사한 데이터를 여기에 붙여넣으세요&#10;예: 동아제약	준법경영	반부패	ESG정책	2025	https://...	정도경영팀 홍길동" style="width:100%;min-height:200px;padding:12px;border:1px solid var(--border);border-radius:var(--rs);font-family:monospace;font-size:12px;resize:vertical"></textarea>
+    <textarea id="pasteText" placeholder="예시 (탭으로 구분):&#10;동아에코팩	소비자중심경영	인증서	FSSC22000 / 식품안전인증제도 (당진)	2025	2025-07-16	2027-05-29	https://...	정도경영팀 유다해 선임&#10;동아제약	준법경영	반부패	ESG정책			2025			https://...	정도경영팀 홍길동" style="width:100%;min-height:200px;padding:12px;border:1px solid var(--border);border-radius:var(--rs);font-family:monospace;font-size:12px;resize:vertical"></textarea>
     <div style="display:flex;gap:8px;margin-top:16px">
       <button onclick="handlePasteData()" style="flex:1;padding:12px;background:var(--primary);color:white;border:none;border-radius:var(--rs);cursor:pointer;font-weight:600">💾 저장</button>
       <button onclick="closePasteModal()" style="flex:1;padding:12px;background:var(--border-l);color:var(--t2);border:none;border-radius:var(--rs);cursor:pointer;font-weight:600">취소</button>
