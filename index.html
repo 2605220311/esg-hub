@@ -165,6 +165,7 @@
     .chip { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 500; background: var(--bg); color: var(--t2); border: 1px solid var(--border); }
 
     @keyframes fi { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     .anim { animation: fi .22s ease forwards; }
 
     @media (max-width: 768px) {
@@ -208,7 +209,7 @@
 const CONFIG = {
   SUPABASE_URL:      'https://vsqluuzuyuyhqgeenpvo.supabase.co',
   SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzcWx1dXp1eXV5aHFnZWVucHZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0MDI5MDgsImV4cCI6MjA5NDk3ODkwOH0.f7K0fWtqk6HMnytl0WnM-Xm_NgLYvgcjDFuwDC3JFD4',
-  ADMIN_PASSWORD:    '정도경영팀',
+  ADMIN_PASSWORD:    'gamasot',
 };
 
 /* 그룹사 목록 */
@@ -1583,26 +1584,51 @@ function closePasteModal() {
   document.getElementById('pasteModal').style.display = 'none';
 }
 
+let isPasting = false; // 중복 실행 방지 플래그
+
 async function handlePasteData() {
+  // 이미 처리 중이면 무시 (더블클릭 방지)
+  if (isPasting) return;
+
   const text = document.getElementById('pasteText').value.trim();
   if (!text) { alert('데이터를 붙여넣어주세요'); return; }
 
   const lines = text.split('\n').filter(l => l.trim());
   if (lines.length < 1) { alert('최소 1행의 데이터가 필요합니다'); return; }
 
+  // 처리 시작 — 플래그 잠금 + UI 잠금
+  isPasting = true;
+  const saveBtn = document.getElementById('pasteSaveBtn');
+  const cancelBtn = document.getElementById('pasteCancelBtn');
+  const closeBtn = document.getElementById('pasteCloseBtn');
+  const textarea = document.getElementById('pasteText');
+  const overlay = document.getElementById('pasteLoadingOverlay');
+  const progressLabel = document.getElementById('pasteProgressLabel');
+  const progressBar = document.getElementById('pasteProgressBar');
+
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.style.opacity = '0.5'; saveBtn.style.cursor = 'not-allowed'; saveBtn.textContent = '⏳ 등록 중...'; }
+  if (cancelBtn) { cancelBtn.disabled = true; cancelBtn.style.opacity = '0.5'; cancelBtn.style.cursor = 'not-allowed'; }
+  if (closeBtn) { closeBtn.disabled = true; closeBtn.style.opacity = '0.4'; closeBtn.style.cursor = 'not-allowed'; }
+  if (textarea) textarea.disabled = true;
+  if (overlay) overlay.style.display = 'flex';
+
   let uploaded = 0;
   let errors = [];
 
   for (let i = 0; i < lines.length; i++) {
+    // 진행 상황 업데이트
+    if (progressLabel) progressLabel.textContent = `${i + 1} / ${lines.length}행 처리 중...`;
+    if (progressBar) progressBar.style.width = `${Math.round((i / lines.length) * 100)}%`;
+    // 다음 프레임 양보 (UI 업데이트가 실제로 반영되도록)
+    await new Promise(r => setTimeout(r, 0));
+
     const cols = lines[i].split('\t').map(c => c.trim());
 
     let co, cat, sub, title, year, issueDate, expiryDate, link, submitter;
 
     if (cols.length === 9) {
-      // 새 포맷: 그룹사 / 분류 / 세부 / 제목 / 연도 / 발행일 / 만료일 / 링크 / 제출자
       [co, cat, sub, title, year, issueDate, expiryDate, link, submitter] = cols;
     } else if (cols.length === 7) {
-      // 구 포맷 호환: 그룹사 / 분류 / 세부 / 제목 / 연도 / 링크 / 제출자 (날짜 없음)
       [co, cat, sub, title, year, link, submitter] = cols;
       issueDate = ''; expiryDate = '';
     } else {
@@ -1615,7 +1641,6 @@ async function handlePasteData() {
       continue;
     }
 
-    // 날짜는 빈 값이면 null로 (인증서가 아닌 행은 자연스럽게 비워둘 수 있음)
     const validDate = d => (d && /^\d{4}-\d{1,2}-\d{1,2}$/.test(d)) ? d : null;
 
     const payload = {
@@ -1637,8 +1662,23 @@ async function handlePasteData() {
     else errors.push(`${i+1}행: ${error.message}`);
   }
 
+  // 마무리 진행률 표시
+  if (progressBar) progressBar.style.width = '100%';
+  if (progressLabel) progressLabel.textContent = `${lines.length}개 처리 완료!`;
+  await new Promise(r => setTimeout(r, 300)); // 100% 보여주는 시간
+
   let msg = `✅ ${uploaded}개 문서 저장 완료!`;
   if (errors.length > 0) msg += `\n\n⚠ 오류 (${errors.length}건):\n${errors.slice(0,10).join('\n')}${errors.length>10?`\n... 외 ${errors.length-10}건`:''}`;
+
+  // UI 잠금 해제 + 닫기
+  isPasting = false;
+  if (saveBtn) { saveBtn.disabled = false; saveBtn.style.opacity = ''; saveBtn.style.cursor = ''; saveBtn.textContent = '💾 저장'; }
+  if (cancelBtn) { cancelBtn.disabled = false; cancelBtn.style.opacity = ''; cancelBtn.style.cursor = ''; }
+  if (closeBtn) { closeBtn.disabled = false; closeBtn.style.opacity = ''; closeBtn.style.cursor = ''; }
+  if (textarea) textarea.disabled = false;
+  if (overlay) overlay.style.display = 'none';
+  if (progressBar) progressBar.style.width = '0%';
+
   alert(msg);
 
   closePasteModal();
@@ -1680,10 +1720,10 @@ init();
 </div>
 
 <div id="pasteModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center">
-  <div style="background:var(--surface);border-radius:var(--r);padding:24px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,0.2)">
+  <div style="position:relative;background:var(--surface);border-radius:var(--r);padding:24px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,0.2)">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
       <div style="font-size:16px;font-weight:700;color:var(--t1)">📋 Excel 데이터 붙여넣기</div>
-      <button style="background:none;border:none;font-size:24px;cursor:pointer;color:var(--t3);padding:0" onclick="closePasteModal()">✕</button>
+      <button id="pasteCloseBtn" style="background:none;border:none;font-size:24px;cursor:pointer;color:var(--t3);padding:0" onclick="closePasteModal()">✕</button>
     </div>
     <div style="margin-bottom:16px;padding:12px;background:var(--bg);border-radius:var(--rs);font-size:12px;color:var(--t2);line-height:1.7">
       💡 Excel에서 데이터 범위를 선택해 복사한 뒤 아래에 붙여넣으세요 <strong>(헤더 제외, 데이터만)</strong><br>
@@ -1693,8 +1733,19 @@ init();
     </div>
     <textarea id="pasteText" placeholder="예시 (탭으로 구분):&#10;동아에코팩	소비자중심경영	인증서	FSSC22000 / 식품안전인증제도 (당진)	2025	2025-07-16	2027-05-29	https://...	정도경영팀 유다해 선임&#10;동아제약	준법경영	반부패	ESG정책			2025			https://...	정도경영팀 홍길동" style="width:100%;min-height:200px;padding:12px;border:1px solid var(--border);border-radius:var(--rs);font-family:monospace;font-size:12px;resize:vertical"></textarea>
     <div style="display:flex;gap:8px;margin-top:16px">
-      <button onclick="handlePasteData()" style="flex:1;padding:12px;background:var(--primary);color:white;border:none;border-radius:var(--rs);cursor:pointer;font-weight:600">💾 저장</button>
-      <button onclick="closePasteModal()" style="flex:1;padding:12px;background:var(--border-l);color:var(--t2);border:none;border-radius:var(--rs);cursor:pointer;font-weight:600">취소</button>
+      <button id="pasteSaveBtn" onclick="handlePasteData()" style="flex:1;padding:12px;background:var(--primary);color:white;border:none;border-radius:var(--rs);cursor:pointer;font-weight:600">💾 저장</button>
+      <button id="pasteCancelBtn" onclick="closePasteModal()" style="flex:1;padding:12px;background:var(--border-l);color:var(--t2);border:none;border-radius:var(--rs);cursor:pointer;font-weight:600">취소</button>
+    </div>
+
+    <!-- 등록 중 로딩 오버레이 -->
+    <div id="pasteLoadingOverlay" style="display:none;position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(255,253,247,0.95);border-radius:var(--r);z-index:10;flex-direction:column;align-items:center;justify-content:center;padding:24px">
+      <div style="width:48px;height:48px;border:4px solid var(--border-l);border-top-color:var(--primary);border-radius:50%;animation:spin 0.9s linear infinite;margin-bottom:16px"></div>
+      <div style="font-size:16px;font-weight:700;color:var(--t1);margin-bottom:6px">잠시만 기다려주세요</div>
+      <div style="font-size:13px;color:var(--t2);margin-bottom:18px">데이터를 등록하고 있습니다. 페이지를 닫지 마세요.</div>
+      <div id="pasteProgressLabel" style="font-size:12px;color:var(--t3);margin-bottom:8px;font-weight:600">준비 중...</div>
+      <div style="width:80%;max-width:320px;height:8px;background:var(--border-l);border-radius:4px;overflow:hidden">
+        <div id="pasteProgressBar" style="width:0%;height:100%;background:var(--primary);border-radius:4px;transition:width 0.2s ease"></div>
+      </div>
     </div>
   </div>
 </div>
