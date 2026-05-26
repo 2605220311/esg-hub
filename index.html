@@ -819,8 +819,12 @@ function rIso() {
     ? allCerts
     : allCerts.filter(c => isoStatus(c) === isoFilter);
 
-  // 매트릭스용: 필터된 데이터에 등장하는 모든 cert_name
-  const allCertNames = [...new Set(filteredCerts.map(c => c.cert_name))].sort();
+  // 매트릭스는 정도경영 분류 기준 (CSR 제외)
+  const MATRIX_CATS = CATS.filter(c => c !== 'CSR');
+  // 매트릭스에 표시할 인증서 (분류가 있고 CSR이 아닌 것)
+  const matrixCerts = filteredCerts.filter(c => c.esg_category && c.esg_category !== 'CSR');
+  const uncategorized = filteredCerts.filter(c => !c.esg_category);
+  const csrCount = filteredCerts.filter(c => c.esg_category === 'CSR').length;
 
   // 카드 스타일 헬퍼 (활성 필터는 강조)
   const cardStyle = (status, baseColor, baseFg) => {
@@ -867,35 +871,48 @@ function rIso() {
     </div>
 
     <div class="card anim">
-      <div class="card-title">📋 그룹사별 인증 현황${isoFilter!=='all'?` <span style="font-size:11px;font-weight:400;color:var(--t3)">· ${filterLabels[isoFilter]}만 표시</span>`:''}</div>
-      ${allCertNames.length === 0
-        ? `<div class="empty"><div class="eico">📭</div>${isoFilter==='all'?'등록된 인증서가 없습니다':`${filterLabels[isoFilter]} 상태인 인증서가 없습니다`}</div>`
+      <div class="card-title">📋 그룹사별 인증 현황${isoFilter!=='all'?` <span style="font-size:11px;font-weight:400;color:var(--t3)">· ${filterLabels[isoFilter]}만 표시</span>`:''} <span style="font-size:11px;font-weight:400;color:var(--t3)">· 정도경영 분류 기준 (CSR 제외)</span></div>
+      ${uncategorized.length > 0 || csrCount > 0 ? `<div style="margin-bottom:12px;padding:8px 12px;background:#FFF9E6;border:1px solid #E8C97A;border-radius:var(--rs);font-size:11px;color:#7A5A0E">
+        ${uncategorized.length > 0 ? `⚠ <strong>분류 미지정 ${uncategorized.length}건</strong>이 매트릭스에 표시되지 않습니다. 목록에서 ✎로 분류를 지정해주세요.` : ''}
+        ${uncategorized.length > 0 && csrCount > 0 ? '<br>' : ''}
+        ${csrCount > 0 ? `ℹ CSR 분류 ${csrCount}건은 매트릭스에서 제외됩니다 (목록·타임라인에는 표시됨).` : ''}
+      </div>` : ''}
+      ${matrixCerts.length === 0
+        ? `<div class="empty"><div class="eico">📭</div>${isoFilter==='all'?'분류된 인증서가 없습니다':`${filterLabels[isoFilter]} 상태인 인증서가 없습니다`}</div>`
         : `<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:12px">
             <thead>
               <tr style="background:var(--bg)">
-                <th style="padding:10px;text-align:left;border:1px solid var(--border);position:sticky;left:0;background:var(--bg);min-width:110px">그룹사</th>
-                ${allCertNames.map(name => `<th style="padding:10px;text-align:center;border:1px solid var(--border);white-space:nowrap;font-size:11px">${name}</th>`).join('')}
+                <th style="padding:10px;text-align:left;border:1px solid var(--border);position:sticky;left:0;background:var(--bg);min-width:110px;z-index:1">그룹사</th>
+                ${MATRIX_CATS.map(cat => `<th style="padding:10px;text-align:center;border:1px solid var(--border);white-space:nowrap;font-size:12px;min-width:140px">${cat}</th>`).join('')}
               </tr>
             </thead>
             <tbody>
-              ${COMPANIES.map(co => {
-                const coCerts = filteredCerts.filter(c => c.company === co);
-                if (coCerts.length === 0) return '';
-                return `<tr>
-                  <td style="padding:8px 10px;border:1px solid var(--border);font-weight:600;background:var(--surface);position:sticky;left:0">${co}</td>
-                  ${allCertNames.map(name => {
-                    const cert = coCerts.find(c => c.cert_name === name);
-                    if (!cert) return `<td style="padding:8px;text-align:center;border:1px solid var(--border);color:var(--t3)">—</td>`;
-                    const st = isoStatus(cert);
-                    const meta = ISO_STATUS_LABEL[st];
-                    const icon = st === 'discontinued' ? '✕' : st === 'expired' ? '⚠' : st === 'expiring' ? '⏰' : '✓';
-                    return `<td style="padding:6px 8px;text-align:center;border:1px solid var(--border);background:${meta.bg};color:${meta.fg};cursor:pointer" onclick="openIsoModal('${cert.id}')" title="클릭해서 상세보기">
-                      <div style="font-size:14px;font-weight:700">${icon}</div>
-                      <div style="font-size:10px;margin-top:2px">${cert.expiry_date ? '~' + cert.expiry_date.substring(2,7).replace('-','.') : ''}</div>
+              ${COMPANIES.filter(co => matrixCerts.some(c => c.company === co)).map(co => `
+                <tr>
+                  <td style="padding:8px 10px;border:1px solid var(--border);font-weight:700;background:var(--surface);position:sticky;left:0;vertical-align:top;z-index:1">${co}</td>
+                  ${MATRIX_CATS.map(cat => {
+                    const cellCerts = matrixCerts.filter(c => c.company === co && c.esg_category === cat);
+                    if (cellCerts.length === 0) return `<td style="padding:8px;text-align:center;border:1px solid var(--border);color:var(--t3);vertical-align:middle">—</td>`;
+                    return `<td style="padding:6px;border:1px solid var(--border);vertical-align:top">
+                      <div style="display:flex;flex-direction:column;gap:4px">
+                        ${cellCerts.map(cert => {
+                          const st = isoStatus(cert);
+                          const meta = ISO_STATUS_LABEL[st];
+                          const icon = st === 'discontinued' ? '✕' : st === 'expired' ? '⚠' : st === 'expiring' ? '⏰' : '✓';
+                          const displayName = cert.cert_name.length > 20 ? cert.cert_name.substring(0, 20) + '…' : cert.cert_name;
+                          return `<div onclick="openIsoModal('${cert.id}')" title="${cert.cert_name}${cert.expiry_date?' (만료 '+cert.expiry_date+')':''}" style="padding:5px 8px;background:${meta.bg};color:${meta.fg};border-radius:4px;cursor:pointer;font-size:11px;line-height:1.3">
+                            <div style="display:flex;align-items:center;gap:4px">
+                              <span style="font-weight:700;font-size:12px">${icon}</span>
+                              <span style="font-weight:600">${displayName}</span>
+                            </div>
+                            ${cert.expiry_date ? `<div style="font-size:10px;opacity:0.85;margin-top:2px">~ ${cert.expiry_date.substring(2,10).replace(/-/g,'.')}</div>` : ''}
+                          </div>`;
+                        }).join('')}
+                      </div>
                     </td>`;
                   }).join('')}
-                </tr>`;
-              }).join('')}
+                </tr>
+              `).join('')}
             </tbody>
           </table></div>`}
     </div>
@@ -932,6 +949,7 @@ function rIso() {
                 <div style="flex:1">
                   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:4px">
                     <span style="font-weight:700;color:var(--t1)">${c.company}</span>
+                    ${c.esg_category ? `<span style="padding:2px 7px;border-radius:4px;background:var(--bg);color:var(--t2);font-size:10px;font-weight:600;border:1px solid var(--border-l)">${c.esg_category}</span>` : ''}
                     <span style="color:var(--t2)">·</span>
                     <span style="font-weight:600;color:var(--t1)">${c.cert_name}</span>
                     <span style="padding:2px 8px;border-radius:4px;background:${meta.bg};color:${meta.fg};font-size:11px;font-weight:600">${meta.text}</span>
@@ -1095,6 +1113,14 @@ function openIsoModal(id) {
         </select>
       </div>
       <div>
+        <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">정도경영 분류</label>
+        <select id="iso-cat" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit">
+          <option value="">(미지정)</option>
+          ${CATS.map(c => `<option value="${c}" ${c===cert.esg_category?'selected':''}>${c}</option>`).join('')}
+        </select>
+        <div style="font-size:10px;color:var(--t3);margin-top:4px">💡 그룹사별 인증현황 매트릭스에 표시되려면 분류 지정이 필요합니다 (CSR 제외)</div>
+      </div>
+      <div>
         <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">인증서 이름 *</label>
         <input type="text" id="iso-name" list="iso-suggestions" value="${(cert.cert_name||'').replace(/"/g,'&quot;')}" placeholder="예: ISO 9001 (품질경영)" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit">
         <div style="font-size:10px;color:var(--t3);margin-top:4px">💡 입력란을 클릭하면 자주 쓰는 인증서 목록이 나옵니다</div>
@@ -1137,6 +1163,7 @@ function closeIsoModal() {
 
 async function saveIso() {
   const co     = document.getElementById('iso-co').value;
+  const cat    = document.getElementById('iso-cat').value || null;
   const name   = document.getElementById('iso-name').value.trim();
   const issue  = document.getElementById('iso-issue').value || null;
   const expiry = document.getElementById('iso-expiry').value || null;
@@ -1146,7 +1173,7 @@ async function saveIso() {
   if (!co || !name) { alert('그룹사와 인증서 이름은 필수입니다.'); return; }
   if (!db) { alert('DB 연결 실패'); return; }
 
-  const payload = { company: co, cert_name: name, issue_date: issue, expiry_date: expiry, status, notes };
+  const payload = { company: co, esg_category: cat, cert_name: name, issue_date: issue, expiry_date: expiry, status, notes };
 
   let res;
   if (isoEditId) {
