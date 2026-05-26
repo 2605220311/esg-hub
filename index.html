@@ -213,7 +213,7 @@ const CONFIG = {
 
 /* 그룹사 목록 */
 const COMPANIES = [
-  '공통', '홀딩스', '동아제약', '비티젠', '동아오츠카',
+  '공통', '홀딩스', '동아ST', '에스티팜', '동아제약', '비티젠', '동아오츠카',
   '동아에코팩', '용마로지스', 'DA인포메이션', '한국신동공업', '아벤종합건설',
 ];
 
@@ -839,7 +839,7 @@ function rIso() {
     <div class="card anim">
       <div class="card-title">🏆 인증서 관리</div>
       <div style="font-size:11px;color:var(--t2);background:var(--bg);padding:8px 12px;border-radius:var(--rs);margin-bottom:12px">
-        💡 문서 제출 시 세부항목을 <strong>'인증서'</strong>로 선택하면 자동으로 이 탭에 표시됩니다. 직접 추가도 가능합니다.<br>
+        💡 문서 제출 시 세부항목을 <strong>'인증서'</strong>로 선택하면 자동으로 이 탭에 표시됩니다.<br>
         💡 아래 요약 카드를 <strong>클릭</strong>하면 그룹사별 인증 현황·타임라인·목록이 해당 상태로 필터링됩니다.
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:6px">
@@ -931,13 +931,10 @@ function rIso() {
     </div>
 
     <div class="card anim">
-      <div class="card-title">📝 인증서 목록${isoFilter!=='all'?` <span style="font-size:11px;font-weight:400;color:var(--t3)">· ${filterLabels[isoFilter]}만 표시</span>`:''} <span style="font-size:12px;font-weight:400;color:var(--t3)">${filteredCerts.length}건${isoFilter==='all'?` · 📄 문서 ${allCerts.filter(c=>c._source==='doc').length}건 · 직접 등록 ${isoData.length}건`:''}</span></div>
-      <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn-sec" onclick="openIsoModal()" style="background:var(--primary);color:white">+ 인증서 직접 추가</button>
+      <div class="card-title">📝 인증서 목록${isoFilter!=='all'?` <span style="font-size:11px;font-weight:400;color:var(--t3)">· ${filterLabels[isoFilter]}만 표시</span>`:''} <span style="font-size:12px;font-weight:400;color:var(--t3)">${filteredCerts.length}건</span></div>
+      <div style="margin-bottom:12px;font-size:11px;color:var(--t2);background:var(--bg);padding:8px 12px;border-radius:var(--rs)">
+        💡 인증서 등록은 <strong>문서 제출</strong> 탭에서 세부항목 '인증서'를 선택하여 제출해주세요.
       </div>
-      <datalist id="iso-suggestions">
-        ${ISO_SUGGESTIONS.map(s => `<option value="${s}">`).join('')}
-      </datalist>
       ${filteredCerts.length === 0
         ? `<div class="empty"><div class="eico">📭</div>${isoFilter==='all'?'등록된 인증서가 없습니다':`${filterLabels[isoFilter]} 상태인 인증서가 없습니다`}</div>`
         : `<div style="display:flex;flex-direction:column;gap:8px">
@@ -953,9 +950,6 @@ function rIso() {
                     <span style="color:var(--t2)">·</span>
                     <span style="font-weight:600;color:var(--t1)">${c.cert_name}</span>
                     <span style="padding:2px 8px;border-radius:4px;background:${meta.bg};color:${meta.fg};font-size:11px;font-weight:600">${meta.text}</span>
-                    ${isDoc
-                      ? `<span style="padding:2px 6px;border-radius:4px;background:#EAE6DD;color:#6E6B66;font-size:10px;font-weight:600" title="문서 제출에서 자동 등록됨">📄 문서 연동</span>`
-                      : `<span style="padding:2px 6px;border-radius:4px;background:#E0EAF0;color:#3D6080;font-size:10px;font-weight:600">✋ 직접 등록</span>`}
                   </div>
                   <div style="font-size:12px;color:var(--t2)">
                     📅 ${c.issue_date || '—'} ~ ${c.expiry_date || '—'}
@@ -969,8 +963,7 @@ function rIso() {
                     ? `<button onclick="toggleCertStatus('${c.id}')" title="${st==='expired'?'중단 카테고리로 이동':'만료 카테고리로 복원'}" style="padding:6px 10px;border:none;border-radius:var(--rs);cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap;background:${st==='expired'?'#6E6B66':'#A0331E'};color:white">${st==='expired'?'🛑 중단으로':'↻ 만료로'}</button>`
                     : ''}
                   ${isDoc
-                    ? `<a href="${c._docLink}" target="_blank" rel="noopener" class="btn-del" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;background:var(--bg)" title="원본 문서 링크 열기">🔗</a>
-                       <button class="btn-del" onclick="alert('📄 문서 제출로 등록된 항목입니다.\\n수정/삭제는 관리자 페이지에서 해당 문서를 편집해주세요.')" title="문서로 등록된 항목 — 관리자 페이지에서 수정" style="opacity:0.4;cursor:help">📄</button>`
+                    ? `<a href="${c._docLink}" target="_blank" rel="noopener" class="btn-del" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;background:var(--bg)" title="원본 문서 링크 열기">🔗</a>`
                     : `<button class="btn-del" onclick="openIsoModal('${c.id}')" title="수정" style="background:var(--primary);color:white">✎</button>
                        <button class="btn-del" onclick="deleteIso('${c.id}')" title="삭제">✕</button>`}
                 </div>
@@ -992,13 +985,27 @@ function renderGantt(allCerts) {
   const maxYear = Math.max(...allDates.map(d => d.getFullYear()), new Date().getFullYear()) + 1;
   const yearSpan = maxYear - minYear;
 
-  // SVG 크기 계산 — 라벨 영역을 넉넉히, 행 높이도 두 줄에 맞춰 증가
+  // 같은 그룹사 + 같은 인증서명을 한 행으로 묶기
+  const groupMap = new Map();
+  certs.forEach(c => {
+    const key = c.company + '||' + c.cert_name;
+    if (!groupMap.has(key)) {
+      groupMap.set(key, { company: c.company, cert_name: c.cert_name, items: [] });
+    }
+    groupMap.get(key).items.push(c);
+  });
+  // 각 그룹의 아이템들을 발행일 순으로 정렬, 그룹 자체도 회사·인증명 순으로
+  const groups = [...groupMap.values()]
+    .map(g => ({ ...g, items: g.items.sort((a,b) => (a.issue_date || '').localeCompare(b.issue_date || '')) }))
+    .sort((a,b) => (a.company+a.cert_name).localeCompare(b.company+b.cert_name));
+
+  // SVG 크기 계산
   const labelWidth = 320;
   const yearWidth = 80;
   const rowHeight = 44;
   const padding = { top: 32, bottom: 10 };
   const totalWidth = labelWidth + yearWidth * yearSpan + 20;
-  const totalHeight = padding.top + certs.length * rowHeight + padding.bottom;
+  const totalHeight = padding.top + groups.length * rowHeight + padding.bottom;
 
   // X 좌표 계산 헬퍼
   const dateToX = d => {
@@ -1030,9 +1037,8 @@ function renderGantt(allCerts) {
     svg += `<text x="${todayX + 4}" y="${padding.top + 4}" fill="#C0883B" font-weight="700" font-size="10">오늘</text>`;
   }
 
-  // 인증서별 행 (회사·인증명 기준 정렬)
-  const sorted = [...certs].sort((a,b) => (a.company+a.cert_name).localeCompare(b.company+b.cert_name));
-  sorted.forEach((c, i) => {
+  // 그룹별 행 — 한 행에 같은 회사·인증서명의 모든 인스턴스를 그림
+  groups.forEach((g, i) => {
     const y = padding.top + i * rowHeight;
     const yMid = y + rowHeight / 2;
 
@@ -1041,31 +1047,34 @@ function renderGantt(allCerts) {
       svg += `<rect x="0" y="${y}" width="${totalWidth}" height="${rowHeight}" fill="#F8F6F2" opacity="0.5"/>`;
     }
 
-    // 라벨 — 두 줄: 위는 그룹사(작고 흐림), 아래는 인증서명(크고 진함)
-    const certDisplay = c.cert_name.length > 30 ? c.cert_name.substring(0, 30) + '…' : c.cert_name;
-    svg += `<text x="${labelWidth - 10}" y="${yMid - 3}" text-anchor="end" fill="#6E6B66" font-size="10" font-weight="500">${c.company}</text>`;
-    svg += `<text x="${labelWidth - 10}" y="${yMid + 11}" text-anchor="end" fill="#1A1A18" font-size="11.5" font-weight="700">${certDisplay}</text>`;
+    // 라벨 (두 줄): 위는 그룹사, 아래는 인증서명 + 인스턴스 개수
+    const certDisplay = g.cert_name.length > 30 ? g.cert_name.substring(0, 30) + '…' : g.cert_name;
+    const countSuffix = g.items.length > 1 ? ` (${g.items.length}회)` : '';
+    svg += `<text x="${labelWidth - 10}" y="${yMid - 3}" text-anchor="end" fill="#6E6B66" font-size="10" font-weight="500">${g.company}</text>`;
+    svg += `<text x="${labelWidth - 10}" y="${yMid + 11}" text-anchor="end" fill="#1A1A18" font-size="11.5" font-weight="700">${certDisplay}${countSuffix}</text>`;
 
-    // 바
-    if (c.issue_date && c.expiry_date) {
-      const x1 = dateToX(c.issue_date);
-      const x2 = dateToX(c.expiry_date);
-      const st = isoStatus(c);
-      const color = st === 'discontinued' ? '#9E9D97' :
-                    st === 'expired' ? '#C0392B' :
-                    st === 'expiring' ? '#C0883B' : '#5C9620';
-      const opacity = st === 'discontinued' ? 0.45 : 0.85;
-      svg += `<rect x="${x1}" y="${y + 10}" width="${Math.max(2, x2 - x1)}" height="${rowHeight - 20}" fill="${color}" opacity="${opacity}" rx="3" style="cursor:pointer" onclick="openIsoModal('${c.id}')"><title>${c.company} · ${c.cert_name}
+    // 같은 행에 여러 막대 그리기 (만료 → 갱신 이력)
+    g.items.forEach(c => {
+      if (c.issue_date && c.expiry_date) {
+        const x1 = dateToX(c.issue_date);
+        const x2 = dateToX(c.expiry_date);
+        const st = isoStatus(c);
+        const color = st === 'discontinued' ? '#9E9D97' :
+                      st === 'expired' ? '#C0392B' :
+                      st === 'expiring' ? '#C0883B' : '#5C9620';
+        const opacity = st === 'discontinued' ? 0.45 : 0.85;
+        svg += `<rect x="${x1}" y="${y + 10}" width="${Math.max(2, x2 - x1)}" height="${rowHeight - 20}" fill="${color}" opacity="${opacity}" rx="3" style="cursor:pointer" onclick="openIsoModal('${c.id}')"><title>${c.company} · ${c.cert_name}
 ${c.issue_date} ~ ${c.expiry_date}
 ${ISO_STATUS_LABEL[st].text}</title></rect>`;
-      // 중단 시 X 표시
-      if (st === 'discontinued') {
-        svg += `<line x1="${x1}" y1="${y+10}" x2="${x2}" y2="${y+rowHeight-10}" stroke="#A0331E" stroke-width="2"/>`;
-        svg += `<line x1="${x2}" y1="${y+10}" x2="${x1}" y2="${y+rowHeight-10}" stroke="#A0331E" stroke-width="2"/>`;
+        if (st === 'discontinued') {
+          svg += `<line x1="${x1}" y1="${y+10}" x2="${x2}" y2="${y+rowHeight-10}" stroke="#A0331E" stroke-width="2"/>`;
+          svg += `<line x1="${x2}" y1="${y+10}" x2="${x1}" y2="${y+rowHeight-10}" stroke="#A0331E" stroke-width="2"/>`;
+        }
+      } else if (c.issue_date) {
+        svg += `<circle cx="${dateToX(c.issue_date)}" cy="${yMid}" r="5" fill="#5C9620" opacity="0.8" style="cursor:pointer" onclick="openIsoModal('${c.id}')"><title>${c.company} · ${c.cert_name}
+발행일: ${c.issue_date}</title></circle>`;
       }
-    } else if (c.issue_date) {
-      svg += `<circle cx="${dateToX(c.issue_date)}" cy="${yMid}" r="5" fill="#5C9620" opacity="0.8"/>`;
-    }
+    });
   });
 
   svg += `</svg></div>
