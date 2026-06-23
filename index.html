@@ -1160,6 +1160,8 @@ function renderGantt(allCerts) {
     }
 
     // 라벨 (두 줄): 위는 그룹사, 아래는 인증서명 + 인스턴스 개수
+    // 라벨 (두 줄): 위는 그룹사, 아래는 인증서명
+    const certDisplay = g.cert_name.length > 30 ? g.cert_name.substring(0, 30) + '…' : g.cert_name;
     svg += `<text x="${labelWidth - 10}" y="${yMid - 3}" text-anchor="end" fill="#6E6B66" font-size="10" font-weight="500">${g.company}</text>`;
     svg += `<text x="${labelWidth - 10}" y="${yMid + 11}" text-anchor="end" fill="#1A1A18" font-size="11.5" font-weight="700">${certDisplay}</text>`;
 
