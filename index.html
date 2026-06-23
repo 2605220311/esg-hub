@@ -759,6 +759,13 @@ function rAdmin() {
       ${dataHTML}
     </div>
     <div class="card anim">
+      <div class="card-title">📋 데이터 복사</div>
+      <div style="font-size:11px;color:var(--t2);background:var(--bg);padding:8px 12px;border-radius:var(--rs);margin-bottom:14px">
+        💡 문서 메타데이터와 인증서 현황을 텍스트로 복사합니다. AI 대화창에 붙여넣기하면 바로 분석 가능해요.
+      </div>
+      <button onclick="copyAnalysisText()" id="btn-copy-analysis" style="padding:8px 18px;border:1px solid var(--primary);border-radius:var(--rs);background:var(--primary);color:white;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer">📋 AI 분석용 텍스트 복사</button>
+    </div>
+    <div class="card anim">
       <div class="card-title" style="font-size:13px;margin-bottom:10px">🔑 관리자 비밀번호 변경</div>
       <div class="pwdrow">
         <input type="password" id="pw1" placeholder="새 비밀번호">
@@ -767,6 +774,77 @@ function rAdmin() {
         ${okPwd ? '<span style="color:var(--be-t);font-size:12px">✓ 변경 완료 (코드의 ADMIN_PASSWORD도 동일하게 수정해주세요)</span>' : ''}
       </div>
     </div>`;
+}
+
+// ── ISO 26000 진단용 데이터 내보내기 ─────────────────────────────
+function buildAnalysisData() {
+  // 문서 메타데이터 (링크 제외)
+  const docs = rows.map(r => ({
+    그룹사: r.company,
+    정도경영분류: r.esg_category,
+    세부항목: r.sub_category,
+    문서제목: r.title || '',
+    작성연도: r.year || '',
+    문서설명: r.description || '',
+    제출자: r.submitter_name || '',
+    제출일: r.created_at ? r.created_at.substring(0, 10) : '',
+  }));
+
+  // 인증서 현황
+  const allCerts = getAllCerts();
+  const certs = allCerts.map(c => ({
+    그룹사: c.company,
+    인증서명: c.cert_name,
+    정도경영분류: c.esg_category || '',
+    발행일: c.issue_date || '',
+    만료일: c.expiry_date || '',
+    상태: { active:'진행중', expiring:'만료임박', expired:'만료', discontinued:'중단' }[isoStatus(c)] || '',
+    비고: c.notes || '',
+  }));
+
+  return { docs, certs };
+}
+
+async function copyAnalysisText() {
+  const { docs, certs } = buildAnalysisData();
+  const today = new Date().toISOString().substring(0,10);
+
+  // 그룹사별 문서 요약
+  const docSummary = COMPANIES.map(co => {
+    const coDocs = docs.filter(d => d.그룹사 === co);
+    if (!coDocs.length) return null;
+    const byCat = {};
+    coDocs.forEach(d => {
+      if (!byCat[d.정도경영분류]) byCat[d.정도경영분류] = [];
+      byCat[d.정도경영분류].push(`${d.세부항목} - ${d.문서제목}${d.문서설명 ? ' ('+d.문서설명+')' : ''}`);
+    });
+    return `[${co}] 총 ${coDocs.length}건\n` + Object.entries(byCat).map(([cat, items]) =>
+      `  ${cat}: ${items.join(' / ')}`
+    ).join('\n');
+  }).filter(Boolean).join('\n\n');
+
+  // 인증서 요약
+  const certSummary = certs.map(c =>
+    `${c.그룹사} | ${c.인증서명} | ${c.상태} | ${c.만료일 || '만료일 없음'}`
+  ).join('\n');
+
+  const text = `=== 동아쏘시오그룹 정도경영 정성데이터 ===
+기준일: ${today}
+그룹사: ${COMPANIES.join(', ')}
+
+── 제출 문서 현황 (총 ${docs.length}건) ──
+${docSummary}
+
+── 인증서 현황 (총 ${certs.length}건) ──
+${certSummary}`;
+
+  try {
+    await navigator.clipboard.writeText(text);
+    const btn = document.getElementById('btn-copy-analysis');
+    if (btn) { btn.textContent = '✓ 복사됨!'; setTimeout(() => { btn.textContent = '📋 클로드 분석용 텍스트 복사'; }, 2000); }
+  } catch {
+    alert('복사 실패 — 브라우저 권한을 확인해주세요.');
+  }
 }
 
 function tryPin() {
