@@ -968,9 +968,10 @@ function rIso() {
   `;
 }
 
-// 인증서명 정규화: 앞의 영문+숫자 코드만 추출 (e.g. "ISO 14001", "FSSC 22000")
+// 인증서명 정규화: 영문+숫자 코드만 추출 (슬래시/괄호/한글 전까지)
 function normalizeCertName(name) {
-  const m = name.match(/^[A-Za-z0-9][\w\s\-\.\/]*?(?=\s*[\(\(]|$)/);
+  // 슬래시, 괄호, 한글 나오기 전까지의 영문+숫자만
+  const m = name.match(/^[A-Za-z0-9][A-Za-z0-9\s\-\.]*?(?=\s*[\/\(\（]|\s*[가-힣]|$)/);
   return m ? m[0].trim() : name.trim();
 }
 
@@ -1050,7 +1051,6 @@ function renderCertMatrix(certs) {
         return `<div style="${i < items.length-1 ? 'border-bottom:1px solid var(--border-l)' : ''}">
           <div onclick="toggleCM('${id}')" style="display:flex;align-items:center;gap:8px;padding:10px 2px;cursor:pointer;user-select:none;flex-wrap:wrap">
             <div style="font-size:12px;font-weight:700;color:var(--t1);white-space:nowrap">${name}</div>
-            ${label ? `<div style="font-size:11px;color:var(--t3)">${label}</div>` : ''}
             ${cat ? `<span style="padding:1px 7px;border-radius:4px;font-size:10px;font-weight:600;${CAT_COLOR[cat]||'background:#eee;color:#555'}">${cat}</span>` : ''}
             <div style="flex:1"></div>
             <div style="display:flex;gap:5px;flex-wrap:wrap">
