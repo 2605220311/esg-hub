@@ -959,7 +959,6 @@ function rIso() {
                 <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;align-items:flex-start;justify-content:flex-end">
                   ${isDoc ? `<a href="${c._docLink}" target="_blank" rel="noopener" class="btn-del" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;background:var(--bg)" title="원본 문서 링크 열기">🔗</a>` : ''}
                   <button class="btn-del" onclick="openIsoModal('${c.id}')" title="수정" style="background:var(--primary);color:white">✎</button>
-                  ${!isDoc ? `<button class="btn-del" onclick="deleteIso('${c.id}')" title="삭제">✕</button>` : ''}
                 </div>
               </div>`;
             }).join('')}
@@ -1238,7 +1237,6 @@ function openIsoModal(id) {
           <option value="">(미지정)</option>
           ${CATS.map(c => `<option value="${c}" ${c===cert.esg_category?'selected':''}>${c}</option>`).join('')}
         </select>
-
       </div>
       <div>
         <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">인증서 이름 *</label>
@@ -1255,13 +1253,17 @@ function openIsoModal(id) {
           <input type="text" id="iso-expiry" value="${cert.expiry_date||''}" placeholder="YYYY-MM-DD" maxlength="10" oninput="fmtDate(this)" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit;letter-spacing:0.04em">
         </div>
       </div>
-
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">문서 링크</label>
+        <input type="url" id="iso-link" value="${(cert.link||cert._docLink||'').replace(/"/g,'&quot;')}" placeholder="https://" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit">
+      </div>
       <div>
         <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">비고</label>
         <textarea id="iso-notes" placeholder="중단 사유, 갱신 예정, 담당부서 등" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit;min-height:60px;resize:vertical">${cert.notes||''}</textarea>
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:18px">
+      ${id ? `<button onclick="deleteIsoFromModal('${id}')" style="padding:8px 14px;border:1px solid #C0392B;background:white;color:#C0392B;border-radius:var(--rs);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer">삭제</button>` : ''}
       <button class="btn-sec" onclick="closeIsoModal()" style="flex:1">취소</button>
       <button class="btn-sec" onclick="saveIso()" style="flex:1;background:var(--primary);color:white">${id ? '저장' : '추가'}</button>
     </div>
@@ -1281,6 +1283,7 @@ async function saveIso() {
   const name   = document.getElementById('iso-name').value.trim();
   const issue  = document.getElementById('iso-issue').value || null;
   const expiry = document.getElementById('iso-expiry').value || null;
+  const link   = document.getElementById('iso-link').value || null;
   const notes  = document.getElementById('iso-notes').value || null;
 
   if (!co || !name) { alert('그룹사와 인증서 이름은 필수입니다.'); return; }
@@ -1288,12 +1291,11 @@ async function saveIso() {
 
   let res;
   if (isoEditId && isoEditId.startsWith('doc-')) {
-    // 문서 제출 연동 항목: esg_submissions 테이블 업데이트
     const docId = isoEditId.substring(4);
-    const docPayload = { title: name, esg_category: cat, company: co, issue_date: issue, expiry_date: expiry, description: notes };
+    const docPayload = { title: name, esg_category: cat, company: co, issue_date: issue, expiry_date: expiry, description: notes, link };
     res = await db.from('esg_submissions').update(docPayload).eq('id', docId).select();
   } else {
-    const payload = { company: co, esg_category: cat, cert_name: name, issue_date: issue, expiry_date: expiry, notes };
+    const payload = { company: co, esg_category: cat, cert_name: name, issue_date: issue, expiry_date: expiry, link, notes };
     if (isoEditId) {
       res = await db.from('iso_certificates').update(payload).eq('id', isoEditId).select();
     } else {
@@ -1312,7 +1314,29 @@ async function saveIso() {
   rIso();
 }
 
+// 모달 내 삭제 (confirm 포함)
+async function deleteIsoFromModal(id) {
+  const allCerts = getAllCerts();
+  const cert = allCerts.find(c => c.id === id);
+  const name = cert ? cert.cert_name : id;
+  if (!confirm(`다음 인증서를 삭제하시겠습니까?\n\n${name}\n\n삭제 후 복구할 수 없습니다.`)) return;
+
+  const isDoc = id.startsWith('doc-');
+  if (isDoc) {
+    const docId = id.substring(4);
+    const { error } = await db.from('esg_submissions').delete().eq('id', docId);
+    if (error) { alert('삭제 실패: ' + error.message); return; }
+  } else {
+    const { error } = await db.from('iso_certificates').delete().eq('id', id);
+    if (error) { alert('삭제 실패: ' + error.message); return; }
+  }
+  closeIsoModal();
+  await load();
+  rIso();
+}
+
 async function deleteIso(id) {
+  // 목록에서 직접 삭제 (비-doc 항목만 호출됨, 이제 미사용이지만 호환성 유지)
   if (!confirm('이 인증서 항목을 삭제하시겠습니까?')) return;
   const { error } = await db.from('iso_certificates').delete().eq('id', id);
   if (error) { alert('삭제 실패: ' + error.message); return; }
