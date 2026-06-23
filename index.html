@@ -987,8 +987,10 @@ function renderCertMatrix(certs) {
     nameMap.get(key).push(c);
   });
 
+  // 분류 태그 우선순위
+  const CAT_ORDER = ['환경경영','인권경영','준법경영','소비자중심경영','공급망 관리','CSR'];
+
   const items = [...nameMap.entries()]
-    .sort(([a],[b]) => a.localeCompare(b))
     .map(([name, holders]) => {
       const cos = [...new Set(holders.map(c => c.company))]
         .sort((a,b) => COMPANIES.indexOf(a) - COMPANIES.indexOf(b));
@@ -998,16 +1000,24 @@ function renderCertMatrix(certs) {
         if (sts.includes('expiring')) return 'expiring';
         return 'active';
       };
-      return { name, holders, cos, worstStatus };
+      const catFromData = holders.find(h => h.esg_category)?.esg_category || null;
+      const meta = CERT_META[name] || null;
+      const cat = catFromData || meta?.cat || null;
+      return { name, holders, cos, worstStatus, cat };
+    })
+    .sort((a, b) => {
+      // 1차: 분류 태그 순
+      const ai = CAT_ORDER.indexOf(a.cat || '');
+      const bi = CAT_ORDER.indexOf(b.cat || '');
+      const catCmp = (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+      if (catCmp !== 0) return catCmp;
+      // 2차: 인증서명 숫자 포함 자연 정렬
+      return a.name.localeCompare(b.name, undefined, { numeric: true });
     });
 
   if (items.length === 0) return '';
 
-  const coTagStyle = st => ({
-    active:   'background:#E8F0DC;color:#2A5210',
-    expiring: 'background:#FFF4D6;color:#7A5A0E',
-    expired:  'background:#FDE4E0;color:#A0331E',
-  }[st] || 'background:#E8F0DC;color:#2A5210');
+  const coTagStyle = () => 'background:var(--bg);color:var(--t2);border:1px solid var(--border)';
 
   const statusDot = st => {
     const c = { active:'#5C9620', expiring:'#C0883B', expired:'#C0392B' }[st] || '#5C9620';
@@ -1026,13 +1036,8 @@ function renderCertMatrix(certs) {
   return `<div class="card anim">
     <div class="card-title">📋 인증서별 취득 그룹사 <span style="font-size:11px;font-weight:400;color:var(--t3)">· 클릭하면 상세 보기</span></div>
     <div style="display:flex;flex-direction:column;gap:0" id="certMatrixList">
-      ${items.map(({name, holders, cos, worstStatus}, i) => {
+      ${items.map(({name, holders, cos, worstStatus, cat}, i) => {
         const id = 'cm-' + i;
-        const meta = CERT_META[name] || null;
-        // 데이터에 esg_category 있으면 우선 사용
-        const catFromData = holders.find(h => h.esg_category)?.esg_category || null;
-        const cat = catFromData || meta?.cat || null;
-        const label = meta?.label || null;
 
         const detailByco = cos.map(co => {
           const coHolders = holders.filter(c => c.company === co);
