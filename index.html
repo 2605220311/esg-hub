@@ -910,6 +910,8 @@ function rIso() {
       </div>` : ''}
     </div>
 
+    ${renderCertMatrix(filteredCerts.filter(c => isoStatus(c) === 'active' || isoStatus(c) === 'expiring'))}
+
     <div class="card anim">
       <div class="card-title">📅 인증 타임라인${isoFilter!=='all'?` <span style="font-size:11px;font-weight:400;color:var(--t3)">· ${filterLabels[isoFilter]}만 표시</span>`:''} <span style="font-size:11px;font-weight:400;color:var(--t3)">· 발행일 ~ 만료일 기준</span></div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;background:var(--bg);border-radius:var(--rs)">
@@ -922,8 +924,6 @@ function rIso() {
       </div>
       ${renderGantt(filteredCerts.filter(c => ganttCompanyFilter === '전체' || c.company === ganttCompanyFilter))}
     </div>
-
-    ${renderCertMatrix(filteredCerts.filter(c => isoStatus(c) === 'active' || isoStatus(c) === 'expiring'))}
 
     <div class="card anim">
       <div class="card-title">📝 인증서 목록${isoFilter!=='all'?` <span style="font-size:11px;font-weight:400;color:var(--t3)">· ${filterLabels[isoFilter]}만 표시</span>`:''} <span style="font-size:12px;font-weight:400;color:var(--t3)">${filteredCerts.filter(c => listCompanyFilter==='전체'||c.company===listCompanyFilter).length}건</span></div>
@@ -967,7 +967,88 @@ function rIso() {
   `;
 }
 
-// 인증서명 정규화: 영문+숫자 코드만 추출 (슬래시/괄호/한글 전까지)
+// 인증서명별 그룹사 취득 현황
+function renderCertMatrix(certs) {
+  if (certs.length === 0) return '';
+
+  const nameMap = new Map();
+  certs.forEach(c => {
+    const key = normalizeCertName(c.cert_name);
+    if (!nameMap.has(key)) nameMap.set(key, []);
+    nameMap.get(key).push(c);
+  });
+
+  const CAT_ORDER = ['환경경영','인권경영','준법경영','소비자중심경영','공급망 관리','CSR'];
+
+  const items = [...nameMap.entries()]
+    .map(([name, holders]) => {
+      const cos = [...new Set(holders.map(c => c.company))]
+        .sort((a,b) => COMPANIES.indexOf(a) - COMPANIES.indexOf(b));
+      const worstStatus = co => {
+        const sts = holders.filter(c => c.company === co).map(c => isoStatus(c));
+        if (sts.includes('expired')) return 'expired';
+        if (sts.includes('expiring')) return 'expiring';
+        return 'active';
+      };
+      const catFromData = holders.find(h => h.esg_category)?.esg_category || null;
+      const meta = CERT_META[name] || null;
+      const cat = catFromData || meta?.cat || null;
+      return { name, holders, cos, worstStatus, cat };
+    })
+    .sort((a, b) => {
+      const ai = CAT_ORDER.indexOf(a.cat || '');
+      const bi = CAT_ORDER.indexOf(b.cat || '');
+      const catCmp = (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+      if (catCmp !== 0) return catCmp;
+      return a.name.localeCompare(b.name, undefined, { numeric: true });
+    });
+
+  if (items.length === 0) return '';
+
+  const CAT_COLOR = {
+    '환경경영':       '#5C9620',
+    '인권경영':       '#2A7AAA',
+    '준법경영':       '#C0883B',
+    '소비자중심경영': '#7A4BAA',
+    '공급망 관리':    '#8A6A3A',
+  };
+
+  const dotColor = st => ({'active':'#5C9620','expiring':'#C0883B','expired':'#C0392B'}[st]||'#9E9D97');
+
+  // 분류별로 묶어서 섹션 구분
+  let lastCat = null;
+  const rows = items.map(({name, cos, worstStatus, cat}) => {
+    const isNewCat = cat !== lastCat;
+    lastCat = cat;
+    const catColor = CAT_COLOR[cat] || '#9E9D97';
+
+    const header = isNewCat && cat ? `
+      <div style="padding:8px 0 4px;font-size:10px;font-weight:700;color:${catColor};letter-spacing:0.06em;text-transform:uppercase;border-top:${items.indexOf(items.find(i=>i.cat===cat))===0?'none':'1px solid var(--border-l)'};margin-top:${items.indexOf(items.find(i=>i.cat===cat))===0?'0':'4px'}">${cat}</div>` : '';
+
+    const coTags = cos.map(co => {
+      const st = worstStatus(co);
+      return `<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--t2)">
+        <span style="width:6px;height:6px;border-radius:50%;background:${dotColor(st)};display:inline-block;flex-shrink:0"></span>${co}
+      </span>`;
+    }).join('<span style="color:var(--border);margin:0 2px">·</span>');
+
+    return `${header}<div style="display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid var(--border-l)">
+      <div style="font-size:12px;font-weight:700;color:var(--t1);min-width:90px;flex-shrink:0">${name}</div>
+      <div style="flex:1;display:flex;flex-wrap:wrap;align-items:center;gap:4px">${coTags}</div>
+      <div style="font-size:11px;color:var(--t3);flex-shrink:0;white-space:nowrap">${cos.length}개사</div>
+    </div>`;
+  }).join('');
+
+  return `<div class="card anim">
+    <div class="card-title">📋 인증서별 취득 그룹사</div>
+    <div>${rows}</div>
+    <div style="display:flex;gap:14px;margin-top:10px;font-size:11px;color:var(--t3);flex-wrap:wrap">
+      <span><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#5C9620;vertical-align:middle;margin-right:3px"></span>진행 중</span>
+      <span><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#C0883B;vertical-align:middle;margin-right:3px"></span>만료 임박</span>
+      <span><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#C0392B;vertical-align:middle;margin-right:3px"></span>만료</span>
+    </div>
+  </div>`;
+}
 function normalizeCertName(name) {
   // 슬래시, 괄호, 한글 나오기 전까지의 영문+숫자만
   const m = name.match(/^[A-Za-z0-9][A-Za-z0-9\s\-\.]*?(?=\s*[\/\(\（]|\s*[가-힣]|$)/);
