@@ -923,7 +923,7 @@ function rIso() {
       ${renderGantt(filteredCerts.filter(c => ganttCompanyFilter === '전체' || c.company === ganttCompanyFilter))}
     </div>
 
-    ${renderCertMatrix(filteredCerts)}
+    ${renderCertMatrix(filteredCerts.filter(c => isoStatus(c) === 'active' || isoStatus(c) === 'expiring'))}
 
     <div class="card anim">
       <div class="card-title">📝 인증서 목록${isoFilter!=='all'?` <span style="font-size:11px;font-weight:400;color:var(--t3)">· ${filterLabels[isoFilter]}만 표시</span>`:''} <span style="font-size:12px;font-weight:400;color:var(--t3)">${filteredCerts.filter(c => listCompanyFilter==='전체'||c.company===listCompanyFilter).length}건</span></div>
