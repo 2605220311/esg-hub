@@ -245,6 +245,27 @@ const ISO_SUGGESTIONS = [
   'ISO 13485 (의료기기 품질)',
   'ISO 17025 (시험·교정 능력)',
 ];
+
+// 인증서 코드 → { label: 한글 설명, cat: 정도경영 분류 }
+const CERT_META = {
+  'ISO 9001':   { label: '품질경영시스템',     cat: '소비자중심경영' },
+  'ISO 14001':  { label: '환경경영시스템',     cat: '환경경영' },
+  'ISO 45001':  { label: '안전보건경영시스템', cat: '인권경영' },
+  'ISO 50001':  { label: '에너지경영시스템',   cat: '환경경영' },
+  'ISO 27001':  { label: '정보보안경영시스템', cat: '준법경영' },
+  'ISO 37001':  { label: '반부패경영시스템',   cat: '준법경영' },
+  'ISO 37301':  { label: '준법경영시스템',     cat: '준법경영' },
+  'ISO 22301':  { label: '사업연속성경영',     cat: '준법경영' },
+  'ISO 13485':  { label: '의료기기 품질경영',  cat: '소비자중심경영' },
+  'ISO 17025':  { label: '시험·교정기관 능력', cat: '소비자중심경영' },
+  'ISO 26000':  { label: '사회적책임 가이던스',cat: '인권경영' },
+  'FSSC 22000': { label: '식품안전경영시스템', cat: '소비자중심경영' },
+  'HACCP':      { label: '위해요소중점관리',   cat: '소비자중심경영' },
+  'GMP':        { label: '우수의약품 제조관리', cat: '소비자중심경영' },
+  'ISO 15378':  { label: '의약품 포장재 품질', cat: '소비자중심경영' },
+  'SA 8000':    { label: '사회적책임경영',     cat: '인권경영' },
+  'RBA':        { label: '책임있는기업연합',   cat: '공급망 관리' },
+};
 let db = null;
 let ready = false;
 let rows = [];
@@ -947,11 +968,10 @@ function rIso() {
   `;
 }
 
-// 인증서명 정규화: 끝에 붙은 (사업장명) 제거
+// 인증서명 정규화: 앞의 영문+숫자 코드만 추출 (e.g. "ISO 14001", "FSSC 22000")
 function normalizeCertName(name) {
-  // 마지막 괄호 덩어리가 사업장/지점명으로 보이면 제거
-  // e.g. "ISO 14001 (환경경영) (당진공장)" → "ISO 14001 (환경경영)"
-  return name.replace(/\s*\([^)]*(?:공장|사업장|지점|센터|본사|당진|상주|천안|안산|서울|부산|인천|대전|광주|울산|수원|성남|화성|평택|시화|반월|구미|창원|포항|울산|여수|익산|전주|청주|충주|원주|춘천|제주)\)\s*$/i, '').trim();
+  const m = name.match(/^[A-Za-z0-9][\w\s\-\.\/]*?(?=\s*[\(\(]|$)/);
+  return m ? m[0].trim() : name.trim();
 }
 
 // 인증서명별 그룹사 취득 현황 요약 (아코디언)
@@ -993,12 +1013,26 @@ function renderCertMatrix(certs) {
     return `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${c};flex-shrink:0"></span>`;
   };
 
+  const CAT_COLOR = {
+    '환경경영':       'background:#DFF0DC;color:#2A5210',
+    '인권경영':       'background:#DFF0FA;color:#14427A',
+    '준법경영':       'background:#FBF0DC;color:#7A4B0A',
+    '소비자중심경영': 'background:#EDE8FA;color:#4A2A8A',
+    '공급망 관리':    'background:#F0E8DC;color:#6A3A0A',
+    'CSR':            'background:#F0F0F0;color:#555',
+  };
+
   return `<div class="card anim">
     <div class="card-title">📋 인증서별 취득 그룹사 <span style="font-size:11px;font-weight:400;color:var(--t3)">· 클릭하면 상세 보기</span></div>
     <div style="display:flex;flex-direction:column;gap:0" id="certMatrixList">
       ${items.map(({name, holders, cos, worstStatus}, i) => {
         const id = 'cm-' + i;
-        // 상세: 그룹사별로 묶어서 사업장명 표시
+        const meta = CERT_META[name] || null;
+        // 데이터에 esg_category 있으면 우선 사용
+        const catFromData = holders.find(h => h.esg_category)?.esg_category || null;
+        const cat = catFromData || meta?.cat || null;
+        const label = meta?.label || null;
+
         const detailByco = cos.map(co => {
           const coHolders = holders.filter(c => c.company === co);
           const sites = coHolders.map(c => {
@@ -1014,12 +1048,15 @@ function renderCertMatrix(certs) {
         }).join('');
 
         return `<div style="${i < items.length-1 ? 'border-bottom:1px solid var(--border-l)' : ''}">
-          <div onclick="toggleCM('${id}')" style="display:flex;align-items:center;gap:10px;padding:10px 2px;cursor:pointer;user-select:none">
-            <div style="flex:1;font-size:12px;font-weight:700;color:var(--t1)">${name}</div>
+          <div onclick="toggleCM('${id}')" style="display:flex;align-items:center;gap:8px;padding:10px 2px;cursor:pointer;user-select:none;flex-wrap:wrap">
+            <div style="font-size:12px;font-weight:700;color:var(--t1);white-space:nowrap">${name}</div>
+            ${label ? `<div style="font-size:11px;color:var(--t3)">${label}</div>` : ''}
+            ${cat ? `<span style="padding:1px 7px;border-radius:4px;font-size:10px;font-weight:600;${CAT_COLOR[cat]||'background:#eee;color:#555'}">${cat}</span>` : ''}
+            <div style="flex:1"></div>
             <div style="display:flex;gap:5px;flex-wrap:wrap">
               ${cos.map(co => `<span style="padding:2px 8px;border-radius:100px;font-size:11px;font-weight:600;${coTagStyle(worstStatus(co))}">${co}</span>`).join('')}
             </div>
-            <div style="white-space:nowrap;font-size:11px;font-weight:700;color:var(--t3);flex-shrink:0;min-width:36px;text-align:right">${cos.length}개사</div>
+            <div style="white-space:nowrap;font-size:11px;font-weight:700;color:var(--t3);min-width:36px;text-align:right">${cos.length}개사</div>
             <span id="${id}-arrow" style="font-size:11px;color:var(--t3);flex-shrink:0;transition:transform .2s">▾</span>
           </div>
           <div id="${id}" style="display:none;padding:6px 10px 12px;background:var(--bg);border-radius:var(--rs);margin-bottom:8px">
