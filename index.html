@@ -321,6 +321,19 @@ function render() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
+// 날짜 자동 포맷: 숫자만 입력하면 YYYY-MM-DD로 자동 변환
+function fmtDate(el) {
+  const pos = el.selectionStart;
+  let v = el.value.replace(/\D/g, '').substring(0, 8);
+  let out = v;
+  if (v.length >= 5) out = v.slice(0,4) + '-' + v.slice(4,6) + '-' + v.slice(6,8);
+  else if (v.length >= 3) out = v.slice(0,4) + '-' + v.slice(4);
+  el.value = out;
+  // 커서 위치 보정 (하이픈 삽입 후 한 칸 앞으로 안 밀리게)
+  const newPos = pos + (out.length - el.value.replace(/\D/g,'').length > 0 ? 1 : 0);
+  try { el.setSelectionRange(out.length, out.length); } catch(_) {}
+}
+
 const bc = c => c.startsWith('환') ? 'be' : c.startsWith('사') ? 'bs' : 'bg';
 const cn = n => n === 0
   ? '<span class="cnt c0">—</span>'
@@ -360,11 +373,11 @@ function rSubmit() {
         </div>
         <div class="fg" id="f-cert-issue-wrap" style="display:none">
           <span class="flabel">인증서 발행일</span>
-          <input type="date" id="f-cert-issue">
+          <input type="text" id="f-cert-issue" placeholder="YYYY-MM-DD" maxlength="10" oninput="fmtDate(this)">
         </div>
         <div class="fg" id="f-cert-expiry-wrap" style="display:none">
           <span class="flabel">유효기간 만료일</span>
-          <input type="date" id="f-cert-expiry">
+          <input type="text" id="f-cert-expiry" placeholder="YYYY-MM-DD" maxlength="10" oninput="fmtDate(this)">
         </div>
         <div class="fg full">
           <span class="flabel">문서 제목 <span class="req">*</span></span>
@@ -934,54 +947,102 @@ function rIso() {
   `;
 }
 
-// 인증서명별 그룹사 취득 현황 요약
+// 인증서명 정규화: 끝에 붙은 (사업장명) 제거
+function normalizeCertName(name) {
+  // 마지막 괄호 덩어리가 사업장/지점명으로 보이면 제거
+  // e.g. "ISO 14001 (환경경영) (당진공장)" → "ISO 14001 (환경경영)"
+  return name.replace(/\s*\([^)]*(?:공장|사업장|지점|센터|본사|당진|상주|천안|안산|서울|부산|인천|대전|광주|울산|수원|성남|화성|평택|시화|반월|구미|창원|포항|울산|여수|익산|전주|청주|충주|원주|춘천|제주)\)\s*$/i, '').trim();
+}
+
+// 인증서명별 그룹사 취득 현황 요약 (아코디언)
 function renderCertMatrix(certs) {
   if (certs.length === 0) return '';
 
-  const certNames = [...new Set(certs.map(c => c.cert_name))].sort();
-  if (certNames.length === 0) return '';
-
-  const items = certNames.map(name => {
-    const holders = certs.filter(c => c.cert_name === name);
-    const cos = [...new Set(holders.map(c => c.company))]
-      .sort((a,b) => COMPANIES.indexOf(a) - COMPANIES.indexOf(b));
-    // 대표 상태: expired > expiring > active
-    const worstStatus = co => {
-      const sts = holders.filter(c => c.company === co).map(c => isoStatus(c));
-      if (sts.includes('expired')) return 'expired';
-      if (sts.includes('expiring')) return 'expiring';
-      return 'active';
-    };
-    return { name, cos, worstStatus };
+  // 정규화된 이름 기준으로 그룹핑
+  const nameMap = new Map(); // normalizedName → { holders: cert[] }
+  certs.forEach(c => {
+    const key = normalizeCertName(c.cert_name);
+    if (!nameMap.has(key)) nameMap.set(key, []);
+    nameMap.get(key).push(c);
   });
 
-  const coTagStyle = st => {
-    const map = {
-      active:   'background:#E8F0DC;color:#2A5210',
-      expiring: 'background:#FFF4D6;color:#7A5A0E',
-      expired:  'background:#FDE4E0;color:#A0331E',
-    };
-    return map[st] || map.active;
+  const items = [...nameMap.entries()]
+    .sort(([a],[b]) => a.localeCompare(b))
+    .map(([name, holders]) => {
+      const cos = [...new Set(holders.map(c => c.company))]
+        .sort((a,b) => COMPANIES.indexOf(a) - COMPANIES.indexOf(b));
+      const worstStatus = co => {
+        const sts = holders.filter(c => c.company === co).map(c => isoStatus(c));
+        if (sts.includes('expired')) return 'expired';
+        if (sts.includes('expiring')) return 'expiring';
+        return 'active';
+      };
+      return { name, holders, cos, worstStatus };
+    });
+
+  if (items.length === 0) return '';
+
+  const coTagStyle = st => ({
+    active:   'background:#E8F0DC;color:#2A5210',
+    expiring: 'background:#FFF4D6;color:#7A5A0E',
+    expired:  'background:#FDE4E0;color:#A0331E',
+  }[st] || 'background:#E8F0DC;color:#2A5210');
+
+  const statusDot = st => {
+    const c = { active:'#5C9620', expiring:'#C0883B', expired:'#C0392B' }[st] || '#5C9620';
+    return `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${c};flex-shrink:0"></span>`;
   };
 
   return `<div class="card anim">
-    <div class="card-title">📋 인증서별 취득 그룹사</div>
-    <div style="display:flex;flex-direction:column;gap:0">
-      ${items.map(({name, cos, worstStatus}, i) => `
-        <div style="display:flex;align-items:center;gap:10px;padding:9px 2px;${i < items.length-1 ? 'border-bottom:1px solid var(--border-l)' : ''}">
-          <div style="min-width:190px;font-size:12px;font-weight:700;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${name}">${name}</div>
-          <div style="display:flex;gap:5px;flex-wrap:wrap;flex:1">
-            ${cos.map(co => `<span style="padding:2px 8px;border-radius:100px;font-size:11px;font-weight:600;${coTagStyle(worstStatus(co))}">${co}</span>`).join('')}
+    <div class="card-title">📋 인증서별 취득 그룹사 <span style="font-size:11px;font-weight:400;color:var(--t3)">· 클릭하면 상세 보기</span></div>
+    <div style="display:flex;flex-direction:column;gap:0" id="certMatrixList">
+      ${items.map(({name, holders, cos, worstStatus}, i) => {
+        const id = 'cm-' + i;
+        // 상세: 그룹사별로 묶어서 사업장명 표시
+        const detailByco = cos.map(co => {
+          const coHolders = holders.filter(c => c.company === co);
+          const sites = coHolders.map(c => {
+            const site = c.cert_name.replace(normalizeCertName(c.cert_name), '').replace(/[()]/g,'').trim();
+            return site || null;
+          }).filter(Boolean);
+          const st = worstStatus(co);
+          return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px dashed var(--border-l)">
+            ${statusDot(st)}
+            <span style="font-weight:700;font-size:12px;color:var(--t1);min-width:90px">${co}</span>
+            ${sites.length ? `<span style="font-size:11px;color:var(--t3)">${sites.join(', ')}</span>` : ''}
+          </div>`;
+        }).join('');
+
+        return `<div style="${i < items.length-1 ? 'border-bottom:1px solid var(--border-l)' : ''}">
+          <div onclick="toggleCM('${id}')" style="display:flex;align-items:center;gap:10px;padding:10px 2px;cursor:pointer;user-select:none">
+            <div style="flex:1;font-size:12px;font-weight:700;color:var(--t1)">${name}</div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap">
+              ${cos.map(co => `<span style="padding:2px 8px;border-radius:100px;font-size:11px;font-weight:600;${coTagStyle(worstStatus(co))}">${co}</span>`).join('')}
+            </div>
+            <div style="white-space:nowrap;font-size:11px;font-weight:700;color:var(--t3);flex-shrink:0;min-width:36px;text-align:right">${cos.length}개사</div>
+            <span id="${id}-arrow" style="font-size:11px;color:var(--t3);flex-shrink:0;transition:transform .2s">▾</span>
           </div>
-          <div style="white-space:nowrap;font-size:11px;font-weight:700;color:var(--t3);flex-shrink:0">${cos.length}개사</div>
-        </div>`).join('')}
+          <div id="${id}" style="display:none;padding:6px 10px 12px;background:var(--bg);border-radius:var(--rs);margin-bottom:8px">
+            ${detailByco}
+          </div>
+        </div>`;
+      }).join('')}
     </div>
     <div style="display:flex;gap:14px;margin-top:10px;font-size:11px;color:var(--t3);flex-wrap:wrap;padding-top:10px;border-top:1px solid var(--border-l)">
-      <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#5C9620;vertical-align:middle;margin-right:4px"></span>진행 중</span>
-      <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#C0883B;vertical-align:middle;margin-right:4px"></span>만료 임박</span>
-      <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#C0392B;vertical-align:middle;margin-right:4px"></span>만료</span>
+      <span>${statusDot('active')} 진행 중</span>
+      <span>${statusDot('expiring')} 만료 임박</span>
+      <span>${statusDot('expired')} 만료</span>
     </div>
   </div>`;
+}
+
+function toggleCM(id) {
+  const el = document.getElementById(id);
+  const arrow = document.getElementById(id + '-arrow');
+  if (!el) return;
+  const open = el.style.display === 'none';
+  el.style.display = open ? '' : 'none';
+  if (arrow) arrow.style.transform = open ? 'rotate(180deg)' : '';
 }
 
 // Gantt 차트 SVG 렌더링
@@ -1145,11 +1206,11 @@ function openIsoModal(id) {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div>
           <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">발행일</label>
-          <input type="date" id="iso-issue" value="${cert.issue_date||''}" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit">
+          <input type="text" id="iso-issue" value="${cert.issue_date||''}" placeholder="YYYY-MM-DD" maxlength="10" oninput="fmtDate(this)" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit;letter-spacing:0.04em">
         </div>
         <div>
           <label style="font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase">만료일</label>
-          <input type="date" id="iso-expiry" value="${cert.expiry_date||''}" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit">
+          <input type="text" id="iso-expiry" value="${cert.expiry_date||''}" placeholder="YYYY-MM-DD" maxlength="10" oninput="fmtDate(this)" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit;letter-spacing:0.04em">
         </div>
       </div>
 
