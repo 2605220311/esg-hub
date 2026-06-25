@@ -2066,22 +2066,43 @@ const MANUAL_DEFAULT = [
   }
 ];
 
-// localStorage에서 메뉴얼 섹션 로드 (없으면 기본값)
-function getManualSections() {
-  try {
-    const saved = localStorage.getItem('manual_sections');
-    if (saved) return JSON.parse(saved);
-  } catch(_) {}
+// ── 이용 매뉴얼 Supabase 연동 ─────────────────────────────────────
+// 테이블: manual_sections (id SERIAL PK, sort_order INT, title TEXT, content TEXT)
+
+async function getManualSections() {
+  if (db) {
+    try {
+      const { data, error } = await db
+        .from('manual_sections')
+        .select('*')
+        .order('sort_order', { ascending: true });
+      if (!error && data && data.length > 0) {
+        return data.map(r => ({ id: r.id, title: r.title, content: r.content }));
+      }
+    } catch(_) {}
+  }
+  // Supabase 미연결 or 데이터 없으면 기본값
   return JSON.parse(JSON.stringify(MANUAL_DEFAULT));
 }
 
-function saveManualSections(sections) {
-  try { localStorage.setItem('manual_sections', JSON.stringify(sections)); } catch(_) {}
+async function saveManualSections(sections) {
+  if (!db) return;
+  try {
+    // 기존 전체 삭제 후 재삽입 (순서 보장)
+    await db.from('manual_sections').delete().neq('id', 0);
+    const rows = sections.map((s, i) => ({
+      sort_order: i,
+      title: s.title,
+      content: s.content,
+    }));
+    await db.from('manual_sections').insert(rows);
+  } catch(_) {}
 }
 
-function rManual() {
+async function rManual() {
   const el = document.getElementById('view-manual');
-  const sections = getManualSections();
+  el.innerHTML = `<div style="text-align:center; padding:40px; color:var(--t3);">불러오는 중...</div>`;
+  const sections = await getManualSections();
 
   // 수정 모드: 비밀번호 인증 후
   if (manualEditMode) {
@@ -2187,13 +2208,13 @@ function checkManualPw() {
   }
 }
 
-function saveManualEdit() {
-  const sections = getManualSections();
+async function saveManualEdit() {
+  const sections = await getManualSections();
   const updated = sections.map((s, i) => ({
     title: document.getElementById(`msec-title-${i}`)?.value || s.title,
     content: document.getElementById(`msec-content-${i}`)?.value || s.content,
   }));
-  saveManualSections(updated);
+  await saveManualSections(updated);
   manualEditMode = false;
   rManual();
 }
@@ -2203,34 +2224,33 @@ function cancelManualEdit() {
   rManual();
 }
 
-function addManualSection() {
-  // 현재 편집 중인 내용 먼저 임시 저장
-  const sections = getManualSections();
+async function addManualSection() {
+  const sections = await getManualSections();
   const updated = sections.map((s, i) => ({
     title: document.getElementById(`msec-title-${i}`)?.value || s.title,
     content: document.getElementById(`msec-content-${i}`)?.value || s.content,
   }));
   updated.push({ title: '새 섹션 제목', content: '내용을 입력하세요.' });
-  saveManualSections(updated);
+  await saveManualSections(updated);
   rManual();
 }
 
-function deleteManualSection(idx) {
+async function deleteManualSection(idx) {
   if (!confirm('이 섹션을 삭제할까요?')) return;
-  const sections = getManualSections();
+  const sections = await getManualSections();
   const updated = sections
     .map((s, i) => ({
       title: document.getElementById(`msec-title-${i}`)?.value || s.title,
       content: document.getElementById(`msec-content-${i}`)?.value || s.content,
     }))
     .filter((_, i) => i !== idx);
-  saveManualSections(updated);
+  await saveManualSections(updated);
   rManual();
 }
 
 // ── 섹션 순서 이동 (▲▼) ───────────────────────────────────────────
-function manualMoveSection(idx, dir) {
-  const sections = getManualSections();
+async function manualMoveSection(idx, dir) {
+  const sections = await getManualSections();
   const current = sections.map((s, i) => ({
     title: document.getElementById(`msec-title-${i}`)?.value || s.title,
     content: document.getElementById(`msec-content-${i}`)?.value || s.content,
@@ -2238,7 +2258,7 @@ function manualMoveSection(idx, dir) {
   const target = idx + dir;
   if (target < 0 || target >= current.length) return;
   [current[idx], current[target]] = [current[target], current[idx]];
-  saveManualSections(current);
+  await saveManualSections(current);
   rManual();
 }
 
@@ -2257,18 +2277,18 @@ function manualDragOver(e) {
   e.currentTarget.style.borderColor = 'var(--primary)';
 }
 
-function manualDrop(e, targetIdx) {
+async function manualDrop(e, targetIdx) {
   e.preventDefault();
   e.currentTarget.style.borderColor = 'transparent';
   if (_dragIdx === null || _dragIdx === targetIdx) return;
-  const sections = getManualSections();
+  const sections = await getManualSections();
   const current = sections.map((s, i) => ({
     title: document.getElementById(`msec-title-${i}`)?.value || s.title,
     content: document.getElementById(`msec-content-${i}`)?.value || s.content,
   }));
   const [moved] = current.splice(_dragIdx, 1);
   current.splice(targetIdx, 0, moved);
-  saveManualSections(current);
+  await saveManualSections(current);
   _dragIdx = null;
   rManual();
 }
