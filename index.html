@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>정도경영 정성데이터 대시보드 · 동아쏘시오그룹</title>
+  <title>정도경영 인증서 대시보드 · 동아쏘시오그룹</title>
 
   <!-- 링크 미리보기용 메타 태그 (Open Graph / Twitter Card) -->
   <meta name="description" content="동아쏘시오그룹 정도경영 정성데이터 대시보드">
@@ -185,11 +185,12 @@
 <header>
   <div class="logo">
     <div class="logo-dot"></div>
-    <span>동아쏘시오그룹</span> 정도경영 정성데이터 대시보드
+    <span>동아쏘시오그룹</span> 정도경영 인증서 대시보드
   </div>
   <nav class="nav-tabs">
-    <button class="nav-tab active" id="tab-iso" onclick="go('iso')">🏆 인증서</button>
-    <button class="nav-tab" id="tab-status" onclick="go('status')">정성 데이터</button>
+    <button class="nav-tab active" id="tab-manual" onclick="go('manual')">📖 이용 매뉴얼</button>
+    <button class="nav-tab" id="tab-iso" onclick="go('iso')">🏆 인증서</button>
+    <button class="nav-tab" id="tab-status" onclick="go('status')" style="display:none">정성 데이터</button>
     <button class="nav-tab" id="tab-submit" onclick="go('submit')">문서 제출</button>
     <button class="nav-tab at" id="tab-admin" onclick="go('admin')">🔒 관리자</button>
   </nav>
@@ -197,8 +198,9 @@
 
 <div class="container">
   <div id="view-submit" style="display:none"></div>
-  <div id="view-status"></div>
+  <div id="view-status" style="display:none"></div>
   <div id="view-iso" style="display:none"></div>
+  <div id="view-manual" style=""></div>
   <div id="view-admin" style="display:none"></div>
 </div>
 
@@ -271,13 +273,15 @@ let ready = false;
 let rows = [];
 let isoData = [];
 let selectedIds = new Set();
-let view = 'iso';
+let view = 'manual';
 let loggedIn = false;
 let pinErr = false;
 let fCat = '전체';
 let fCo  = '전체';
 let okSubmit = false;
 let okPwd = false;
+let manualUnlocked = false;
+let manualEditMode = false;
 
 // ── Init ──────────────────────────────────────────────────────────
 function init() {
@@ -326,9 +330,10 @@ async function load() {
 // ── Routing ───────────────────────────────────────────────────────
 function go(v) {
   view = v;
-  ['submit','status','iso','admin'].forEach(x => {
+  ['submit','status','iso','admin','manual'].forEach(x => {
     document.getElementById('view-' + x).style.display = x === v ? '' : 'none';
     const t = document.getElementById('tab-' + x);
+    if (!t) return;
     t.className = 'nav-tab' + (x === 'admin' ? ' at' : '') + (x === v ? ' active' : '');
   });
   render();
@@ -338,6 +343,7 @@ function render() {
   if (view === 'submit') rSubmit();
   else if (view === 'status') rStatus();
   else if (view === 'iso') rIso();
+  else if (view === 'manual') rManual();
   else rAdmin();
 }
 
@@ -2063,5 +2069,183 @@ function renderTimeline(data) {
     rowEl.appendChild(barAreaEl);
     container.appendChild(rowEl);
   });
+}
+
+// ── MANUAL VIEW ───────────────────────────────────────────────────
+const MANUAL_DEFAULT = [
+  {
+    title: '📋 대시보드 개요',
+    content: '동아쏘시오그룹 정도경영 정성데이터 대시보드는 그룹 내 ESG 활동 관련 문서와 인증서를 통합 관리하기 위한 플랫폼입니다.\n각 그룹사의 담당자가 직접 문서를 제출하고, 관리자가 현황을 한눈에 파악할 수 있도록 설계되었습니다.'
+  },
+  {
+    title: '🏆 인증서 탭',
+    content: '그룹사별 ISO 인증서 현황을 조회하는 탭입니다.\n- 인증서 종류, 그룹사, 유효기간 등을 한눈에 확인할 수 있습니다.\n- 타임라인 보기를 통해 인증서의 발급일과 만료일을 시각적으로 파악할 수 있습니다.\n- 만료 임박 인증서는 별도로 강조 표시됩니다.'
+  },
+  {
+    title: '📤 문서 제출 탭',
+    content: 'ESG 정성 문서를 등록하는 탭입니다.\n1. 그룹사를 선택합니다.\n2. 정도경영 분류(인권경영, 환경경영, 준법경영 등)를 선택합니다.\n3. 세부 항목을 선택합니다.\n4. 문서 링크와 설명을 입력하고 제출합니다.\n- 인증서 항목 선택 시 발행일 및 만료일을 추가로 입력할 수 있습니다.'
+  },
+  {
+    title: '🔒 관리자 탭',
+    content: '관리자 전용 기능을 제공하는 탭입니다.\n- 비밀번호 인증 후 접근 가능합니다.\n- 제출된 문서의 순서 변경, 삭제 등 관리 작업을 수행할 수 있습니다.\n- Supabase 연결 설정 및 시스템 상태를 확인할 수 있습니다.'
+  },
+  {
+    title: '❓ 자주 묻는 질문',
+    content: 'Q. 문서 링크는 어떤 형식으로 입력하나요?\nA. https:// 로 시작하는 전체 URL을 입력해주세요. (예: https://drive.google.com/...)\n\nQ. 제출한 문서를 수정하거나 삭제하려면 어떻게 하나요?\nA. 관리자 탭에서 비밀번호 인증 후 수정 및 삭제가 가능합니다.\n\nQ. 인증서 만료일이 지났는데 어떻게 처리하나요?\nA. 갱신된 인증서를 새로 제출하고, 기존 항목은 관리자를 통해 삭제 또는 업데이트 해주세요.'
+  }
+];
+
+// localStorage에서 메뉴얼 섹션 로드 (없으면 기본값)
+function getManualSections() {
+  try {
+    const saved = localStorage.getItem('manual_sections');
+    if (saved) return JSON.parse(saved);
+  } catch(_) {}
+  return JSON.parse(JSON.stringify(MANUAL_DEFAULT));
+}
+
+function saveManualSections(sections) {
+  try { localStorage.setItem('manual_sections', JSON.stringify(sections)); } catch(_) {}
+}
+
+function rManual() {
+  const el = document.getElementById('view-manual');
+  const sections = getManualSections();
+
+  // 수정 모드: 비밀번호 인증 후
+  if (manualEditMode) {
+    const sectionsHtml = sections.map((s, i) => `
+      <div class="card anim" style="margin-bottom:12px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+          <input type="text" id="msec-title-${i}" value="${escHtml(s.title)}" style="font-size:14px; font-weight:700; flex:1; margin-right:10px;">
+          <button class="btn-sec" style="color:#C0392B; border-color:#f5c6c6;" onclick="deleteManualSection(${i})">삭제</button>
+        </div>
+        <textarea id="msec-content-${i}" style="width:100%; min-height:110px; font-size:13px;">${escHtml(s.content)}</textarea>
+      </div>
+    `).join('');
+
+    el.innerHTML = `
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:8px;">
+        <div>
+          <div style="font-size:18px; font-weight:700; letter-spacing:-.02em;">📖 이용 매뉴얼</div>
+          <div style="font-size:12px; color:var(--t3); margin-top:2px;">동아쏘시오그룹 정도경영 인증서 대시보드 이용 안내</div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-sec" onclick="addManualSection()">+ 섹션 추가</button>
+          <button class="btn-main" style="width:auto; padding:8px 20px; margin-top:0;" onclick="saveManualEdit()">💾 저장</button>
+          <button class="btn-sec" onclick="cancelManualEdit()">취소</button>
+        </div>
+      </div>
+      <div class="alert a-info anim" style="margin-bottom:16px;">✏️ 수정 모드입니다. 내용을 편집한 후 저장 버튼을 눌러주세요.</div>
+      ${sectionsHtml}
+      <button class="btn-sec" style="width:100%; text-align:center; margin-top:4px;" onclick="addManualSection()">+ 새 섹션 추가</button>
+    `;
+    return;
+  }
+
+  // 열람 모드
+  const sectionsHtml = sections.map((s, i) => `
+    <div class="card anim" style="margin-bottom:12px;">
+      <div class="card-title" style="margin-bottom:10px;">${escHtml(s.title)}</div>
+      <div style="font-size:13px; color:var(--t2); line-height:1.9; white-space:pre-wrap;">${escHtml(s.content)}</div>
+    </div>
+  `).join('');
+
+  el.innerHTML = `
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:8px;">
+      <div>
+        <div style="font-size:18px; font-weight:700; letter-spacing:-.02em;">📖 이용 매뉴얼</div>
+        <div style="font-size:12px; color:var(--t3); margin-top:2px;">동아쏘시오그룹 정도경영 인증서 대시보드 이용 안내</div>
+      </div>
+      <div>
+        <button class="btn-sec" onclick="showManualPwBox()">✏️ 내용 수정</button>
+      </div>
+    </div>
+    <div id="manual-pw-box" style="display:none; margin-bottom:16px;">
+      <div class="card" style="padding:16px 20px;">
+        <div style="font-size:13px; font-weight:600; margin-bottom:10px;">🔒 관리자 비밀번호 확인</div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input type="password" id="manual-pw-input" placeholder="비밀번호 입력" style="flex:1; max-width:220px;"
+            onkeydown="if(event.key==='Enter') checkManualPw()">
+          <button class="btn-main" style="width:auto; padding:9px 20px; margin-top:0;" onclick="checkManualPw()">확인</button>
+          <button class="btn-sec" onclick="hideManualPwBox()">취소</button>
+        </div>
+        <div id="manual-pw-err" style="display:none; color:#C0392B; font-size:12px; margin-top:8px;">비밀번호가 올바르지 않습니다.</div>
+      </div>
+    </div>
+    ${sectionsHtml}
+  `;
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function showManualPwBox() {
+  const box = document.getElementById('manual-pw-box');
+  if (box) { box.style.display = ''; document.getElementById('manual-pw-input').focus(); }
+}
+
+function hideManualPwBox() {
+  const box = document.getElementById('manual-pw-box');
+  if (box) box.style.display = 'none';
+  const err = document.getElementById('manual-pw-err');
+  if (err) err.style.display = 'none';
+}
+
+function checkManualPw() {
+  const input = document.getElementById('manual-pw-input');
+  if (!input) return;
+  if (input.value.toUpperCase() === CONFIG.ADMIN_PASSWORD.toUpperCase()) {
+    manualUnlocked = true;
+    manualEditMode = true;
+    rManual();
+  } else {
+    const err = document.getElementById('manual-pw-err');
+    if (err) err.style.display = '';
+    input.value = '';
+    input.focus();
+  }
+}
+
+function saveManualEdit() {
+  const sections = getManualSections();
+  const updated = sections.map((s, i) => ({
+    title: document.getElementById(`msec-title-${i}`)?.value || s.title,
+    content: document.getElementById(`msec-content-${i}`)?.value || s.content,
+  }));
+  saveManualSections(updated);
+  manualEditMode = false;
+  rManual();
+}
+
+function cancelManualEdit() {
+  manualEditMode = false;
+  rManual();
+}
+
+function addManualSection() {
+  // 현재 편집 중인 내용 먼저 임시 저장
+  const sections = getManualSections();
+  const updated = sections.map((s, i) => ({
+    title: document.getElementById(`msec-title-${i}`)?.value || s.title,
+    content: document.getElementById(`msec-content-${i}`)?.value || s.content,
+  }));
+  updated.push({ title: '새 섹션 제목', content: '내용을 입력하세요.' });
+  saveManualSections(updated);
+  rManual();
+}
+
+function deleteManualSection(idx) {
+  if (!confirm('이 섹션을 삭제할까요?')) return;
+  const sections = getManualSections();
+  const updated = sections
+    .map((s, i) => ({
+      title: document.getElementById(`msec-title-${i}`)?.value || s.title,
+      content: document.getElementById(`msec-content-${i}`)?.value || s.content,
+    }))
+    .filter((_, i) => i !== idx);
+  saveManualSections(updated);
+  rManual();
 }
 </script>
